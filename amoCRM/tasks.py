@@ -104,27 +104,3 @@ class TasksFetcher:
                     return "Задача успешно изменена!"
                 else:
                     return "Возникла ошибка при изменении задачи\n" + str(await response.text())
-
-
-async def get_all_tasks():
-    tasks_fetcher = TasksFetcher(ACCESS_TOKEN, SUBDOMAIN_URL)
-    all_tasks = await tasks_fetcher.get_all_tasks()
-    print(all_tasks)
-
-
-async def add_new_task(entity_id, task_type, task_text, complete_till: datetime.datetime):
-    tasks_fetcher = TasksFetcher(ACCESS_TOKEN, SUBDOMAIN_URL)
-    result = await tasks_fetcher.add_new_task(entity_id, task_type, task_text, complete_till)
-    print(result)
-
-
-async def change_task_type(task_id, new_task_type, new_task_text, complete_till):
-    tasks_fetcher = TasksFetcher(ACCESS_TOKEN, SUBDOMAIN_URL)
-    result = await tasks_fetcher.change_task_type(task_id, new_task_type, new_task_text, complete_till)
-    print(result)
-
-
-if __name__ == '__main__':
-    # asyncio.run(get_all_tasks())
-    # asyncio.run(add_new_task(2212583, 2, 'Тестовая задача в лидах', datetime.datetime.now() + datetime.timedelta(days=2)))\
-    asyncio.run(change_task_type(115545, 1, "Новый текст задачи", datetime.datetime.now() + datetime.timedelta(days=10)))

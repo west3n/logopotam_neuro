@@ -38,14 +38,4 @@ class AccountFetcher:
         async with aiohttp.ClientSession() as session:
             async with session.get(url=url, headers=self.get_headers()) as response:
                 response_json = await response.json()
-                print(response_json)
-
-
-async def get_account_info():
-    account_fetcher = AccountFetcher(ACCESS_TOKEN, SUBDOMAIN_URL)
-    account_info = await account_fetcher.get_account_info()
-
-
-if __name__ == '__main__':
-    asyncio.run(get_account_info())
-
+                return response_json

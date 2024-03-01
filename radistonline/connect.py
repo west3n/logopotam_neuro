@@ -76,13 +76,3 @@ class RadistonlineConnect:
                     return "Сообщение успешно отправлено!"
                 else:
                     return f"Возникла ошибка {response.status} c текстом:\n{await response.text()}"
-
-
-async def send_message():
-    radistonline_connector = RadistonlineConnect(API_KEY, SUBDOMAIN_URL)
-    message_status = await radistonline_connector.send_message(chat_id=15828317)
-    print(message_status)
-
-
-if __name__ == '__main__':
-    asyncio.run(send_message())

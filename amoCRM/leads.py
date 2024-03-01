@@ -94,27 +94,3 @@ class LeadFetcher:
                         return "Возникла проблема при изменении статуса!\n" + await response.text()
         else:
             return f"Данного статуса не существует! Доступные варианты:\n{', '.join(available_statuses)}"
-
-
-async def get_lead_info():
-    lead_fetcher = LeadFetcher(ACCESS_TOKEN, SUBDOMAIN_URL)
-    leads = await lead_fetcher.get_all_leads()
-    for lead in leads:
-        lead_data = await lead_fetcher.get_lead(lead['id'])
-        print(lead_data)
-
-
-async def change_lead_name(lead_id: str, new_name: str):
-    lead_fetcher = LeadFetcher(ACCESS_TOKEN, SUBDOMAIN_URL)
-    result = await lead_fetcher.change_lead_name(lead_id, new_name)
-    print(result)
-
-
-async def change_lead_status(lead_id: str, status: str):
-    lead_fetcher = LeadFetcher(ACCESS_TOKEN, SUBDOMAIN_URL)
-    result = await lead_fetcher.change_lead_status(lead_id, status)
-    print(result)
-
-
-if __name__ == '__main__':
-    asyncio.run(get_lead_info())
