@@ -1,5 +1,5 @@
 import aiohttp
-from src.core.config import Settings, Headers
+from src.core.config import settings, headers
 
 
 class PipelineFetcher:
@@ -10,9 +10,9 @@ class PipelineFetcher:
 
         :return: Словарь, содержащий информацию о воронке
         """
-        url = Settings.AMO_SUBDOMAIN_URL + '/api/v4/leads/pipelines'
+        url = settings.AMO_SUBDOMAIN_URL + '/api/v4/leads/pipelines'
         async with aiohttp.ClientSession() as session:
-            async with session.get(url=url, headers=Headers.AMO_HEADERS) as response:
+            async with session.get(url=url, headers=headers.AMO_HEADERS) as response:
                 if response.status == 200:
                     response_json = await response.json()
                     return response_json['_embedded']['pipelines'][0]
@@ -28,9 +28,9 @@ class PipelineFetcher:
         """
         pipeline_data = await PipelineFetcher.get_pipeline_info()
         pipeline_id = pipeline_data['id']
-        url = Settings.AMO_SUBDOMAIN_URL + f'/api/v4/leads/pipelines/{pipeline_id}/statuses'
+        url = settings.AMO_SUBDOMAIN_URL + f'/api/v4/leads/pipelines/{pipeline_id}/statuses'
         async with aiohttp.ClientSession() as session:
-            async with session.get(url=url, headers=Headers.AMO_HEADERS) as response:
+            async with session.get(url=url, headers=headers.AMO_HEADERS) as response:
                 if response.status == 200:
                     statuses = await response.json()
                     statuses_dict = {}

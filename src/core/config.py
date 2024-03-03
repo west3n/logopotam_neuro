@@ -14,6 +14,9 @@ class Settings:
     RADIST_SUBDOMAIN_URL: str = decouple.config('RADIST_SUBDOMAIN_URL')
     RADIST_COMPANY_ID: str = decouple.config('RADIST_COMPANY_ID')
 
+    # SQLAlchemy
+    SQLALCHEMY_DATABASE_URI: str = ''
+
 
 class Headers:
     """
@@ -27,3 +30,7 @@ class Headers:
         'X-Api-Key': f'{Settings.RADIST_API_KEY}',
         'Content-Type': 'application/json'
     }
+
+
+settings = Settings()
+headers = Headers()

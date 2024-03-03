@@ -4,8 +4,22 @@
 """
 
 from quart import Quart, request, jsonify
+from src.orm.session import engine
+from src.orm.base import Base
 
 app = Quart(__name__)
+
+
+@app.before_serving
+async def create_db():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)  # noqa
+
+
+@app.after_serving
+async def delete_db():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all) # noqa
 
 
 @app.route('/event', methods=['POST'])
@@ -25,4 +39,6 @@ async def data_processing(data):
 
 
 if __name__ == '__main__':
-    app.run()
+    import uvicorn
+
+    uvicorn.run(app)

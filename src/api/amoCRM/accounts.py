@@ -1,6 +1,6 @@
 import aiohttp
 
-from src.core.config import Settings, Headers
+from src.core.config import settings, headers
 
 
 class AccountFetcher:
@@ -10,8 +10,8 @@ class AccountFetcher:
         Получение информации об аккаунте
         :return:
         """
-        url = Settings.AMO_SUBDOMAIN_URL + '/api/v4/account?with=amojo_id'
+        url = settings.AMO_SUBDOMAIN_URL + '/api/v4/account?with=amojo_id'
         async with aiohttp.ClientSession() as session:
-            async with session.get(url=url, headers=Headers.AMO_HEADERS) as response:
+            async with session.get(url=url, headers=headers.AMO_HEADERS) as response:
                 response_json = await response.json()
                 return response_json

@@ -1,7 +1,6 @@
 import aiohttp
 
-from decouple import config
-from src.core.config import Settings, Headers
+from src.core.config import settings, headers
 
 
 class RadistOnlineConnect:
@@ -11,9 +10,9 @@ class RadistOnlineConnect:
         Получение ID подключения, необходим для работы с методами API
         :return: ID в формате целочисленного значения (int)
         """
-        url = Settings.RADIST_SUBDOMAIN_URL + 'connections/'
+        url = settings.RADIST_SUBDOMAIN_URL + 'connections/'
         async with aiohttp.ClientSession() as session:
-            async with session.get(url=url, headers=Headers.RADIST_HEADERS) as response:
+            async with session.get(url=url, headers=headers.RADIST_HEADERS) as response:
                 response_json = await response.json()
                 return int(response_json['connections'][0]['id'])
 
@@ -23,9 +22,9 @@ class RadistOnlineConnect:
         Получение всех чатов
         :return: Список всех чатов, каждый чат в формате JSON
         """
-        url = Settings.RADIST_SUBDOMAIN_URL + 'messaging/chats/with_contacts/'
+        url = settings.RADIST_SUBDOMAIN_URL + 'messaging/chats/with_contacts/'
         async with aiohttp.ClientSession() as session:
-            async with session.get(url=url, headers=Headers.RADIST_HEADERS) as response:
+            async with session.get(url=url, headers=headers.RADIST_HEADERS) as response:
                 response_json = await response.json()
                 return response_json["data"]
 
@@ -38,7 +37,7 @@ class RadistOnlineConnect:
         :param text: Текст сообщения
         :return: Текст, сообщающий об успешной отправке сообщения (или кода с текстом ошибки)
         """
-        url = Settings.RADIST_SUBDOMAIN_URL + 'messaging/messages/'
+        url = settings.RADIST_SUBDOMAIN_URL + 'messaging/messages/'
         data = {
             "connection_id": await RadistOnlineConnect.get_connection_id(),
             "chat_id": chat_id,
@@ -49,7 +48,7 @@ class RadistOnlineConnect:
             }
         }
         async with aiohttp.ClientSession() as session:
-            async with session.post(url=url, headers=Headers.RADIST_HEADERS, json=data) as response:
+            async with session.post(url=url, headers=headers.RADIST_HEADERS, json=data) as response:
                 if response.status == 200:
                     return "Сообщение успешно отправлено!"
                 else:

@@ -1,7 +1,9 @@
+import asyncio
+
 import aiohttp
 
 from src.api.amoCRM.pipelines import PipelineFetcher
-from src.core.config import Settings, Headers
+from src.core.config import settings, headers
 
 
 class LeadFetcher:
@@ -12,9 +14,9 @@ class LeadFetcher:
 
         :return: Список словарей, содержащий информацию о каждом лиде
         """
-        url = Settings.AMO_SUBDOMAIN_URL + '/api/v4/leads'
+        url = settings.AMO_SUBDOMAIN_URL + '/api/v4/leads'
         async with aiohttp.ClientSession() as session:
-            async with session.get(url=url, headers=Headers.AMO_HEADERS) as response:
+            async with session.get(url=url, headers=headers.AMO_HEADERS) as response:
                 response_json = await response.json()
                 return response_json['_embedded']['leads']
 
@@ -26,9 +28,9 @@ class LeadFetcher:
         :param lead_id: Строка, идентификатор лидера
         :return: Словарь, содержащий информацию о конкретном лиде
         """
-        url = Settings.AMO_SUBDOMAIN_URL + '/api/v4/leads/' + str(lead_id)
+        url = settings.AMO_SUBDOMAIN_URL + '/api/v4/leads/' + str(lead_id)
         async with aiohttp.ClientSession() as session:
-            async with session.get(url=url, headers=Headers.AMO_HEADERS) as response:
+            async with session.get(url=url, headers=headers.AMO_HEADERS) as response:
                 return await response.json()
 
     @staticmethod
@@ -40,12 +42,12 @@ class LeadFetcher:
         :param new_name: Строка, новое имя для лида
         :return: Строка, сообщение об успешном или неудачном изменении имени
         """
-        url = Settings.AMO_SUBDOMAIN_URL + '/api/v4/leads/' + str(lead_id)
+        url = settings.AMO_SUBDOMAIN_URL + '/api/v4/leads/' + str(lead_id)
         data = {
             'name': new_name
         }
         async with aiohttp.ClientSession() as session:
-            async with session.patch(url=url, headers=Headers.AMO_HEADERS, json=data) as response:
+            async with session.patch(url=url, headers=headers.AMO_HEADERS, json=data) as response:
                 if response.status == 200:
                     return "Имя изменено успешно!"
                 else:
@@ -64,15 +66,25 @@ class LeadFetcher:
         statuses_dict = await PipelineFetcher.get_pipeline_statuses()
         available_statuses = [value for _, value in statuses_dict.items()]
         if status_id:
-            url = Settings.AMO_SUBDOMAIN_URL + '/api/v4/leads/' + str(lead_id)
+            url = settings.AMO_SUBDOMAIN_URL + '/api/v4/leads/' + str(lead_id)
             data = {
                 'status_id': status_id
             }
             async with (aiohttp.ClientSession() as session):
-                async with session.patch(url=url, headers=Headers.AMO_HEADERS, json=data) as response:
+                async with session.patch(url=url, headers=headers.AMO_HEADERS, json=data) as response:
                     if response.status == 200:
                         return "Статус изменен успешно!"
                     else:
                         return "Возникла проблема при изменении статуса!\n" + await response.text()
         else:
             return f"Данного статуса не существует! Доступные варианты:\n{', '.join(available_statuses)}"
+
+
+async def amo_leads_list():
+    amo_leads = await LeadFetcher.get_all_leads()
+    for lead in amo_leads:
+        print(lead)
+
+
+if __name__ == "__main__":
+    asyncio.run(amo_leads_list())
