@@ -13,7 +13,7 @@ class RadistOnlineWebhook:
         :return: Текст с успешным созданием новой подписки (или код ошибки с текстом ошибки)
         """
         url = settings.RADIST_SUBDOMAIN_URL + '/webhooks'
-        connection_id = RadistOnlineConnect.get_connection_id()
+        connection_id = await RadistOnlineConnect.get_connection_id()
         data = {
             "url": webhook_url,
             "events": [

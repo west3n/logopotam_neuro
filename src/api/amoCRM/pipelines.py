@@ -53,3 +53,12 @@ class PipelineFetcher:
             if status_name == name:
                 return status_id
         return None
+
+    @staticmethod
+    async def get_pipeline_name_from_id(status_id: str):
+        """
+        Получение имени статуса по его ID
+
+        :param status_id:
+        :return:
+        """
