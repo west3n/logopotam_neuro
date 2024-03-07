@@ -1,3 +1,5 @@
+import asyncio
+
 import aiohttp
 
 from src.api.radistonline.connect import RadistOnlineConnect
@@ -5,6 +7,17 @@ from src.core.config import settings, headers
 
 
 class RadistOnlineWebhook:
+    @staticmethod
+    async def get_webhooks():
+        """
+        Получение всех активных вебхуков
+        :return: Список вебхуков
+        """
+        url = settings.RADIST_SUBDOMAIN_URL + '/webhooks'
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url=url, headers=headers.RADIST_HEADERS) as response:
+                return await response.json()
+
     @staticmethod
     async def create_webhook(webhook_url: str):
         """

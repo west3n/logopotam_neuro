@@ -13,7 +13,7 @@ class LeadFetcher:
 
         :return: Список словарей, содержащий информацию о каждом лиде
         """
-        url = settings.AMO_SUBDOMAIN_URL + '/api/v4/leads'
+        url = settings.AMO_SUBDOMAIN_URL + '/api/v4/leads?with=contacts'
         async with aiohttp.ClientSession() as session:
             async with session.get(url=url, headers=headers.AMO_HEADERS) as response:
                 response_json = await response.json()
@@ -27,7 +27,7 @@ class LeadFetcher:
         :param lead_id: Строка, идентификатор лидера
         :return: Словарь, содержащий информацию о конкретном лиде
         """
-        url = settings.AMO_SUBDOMAIN_URL + '/api/v4/leads/' + str(lead_id)
+        url = settings.AMO_SUBDOMAIN_URL + '/api/v4/leads/' + str(lead_id) + '?with=contacts'
         async with aiohttp.ClientSession() as session:
             async with session.get(url=url, headers=headers.AMO_HEADERS) as response:
                 return await response.json()
@@ -79,11 +79,6 @@ class LeadFetcher:
             return f"Данного статуса не существует! Доступные варианты:\n{', '.join(available_statuses)}"
 
 
-async def amo_leads_list():
-    amo_leads = await LeadFetcher.get_all_leads()
-    for lead in amo_leads:
-        print(lead)
-
-
 if __name__ == "__main__":
-    asyncio.run(amo_leads_list())
+    leads = asyncio.run(LeadFetcher.get_all_leads())
+    print(leads)

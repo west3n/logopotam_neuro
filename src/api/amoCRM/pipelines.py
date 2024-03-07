@@ -1,3 +1,5 @@
+import asyncio
+
 import aiohttp
 from src.core.config import settings, headers
 
@@ -54,11 +56,7 @@ class PipelineFetcher:
                 return status_id
         return None
 
-    @staticmethod
-    async def get_pipeline_name_from_id(status_id: str):
-        """
-        Получение имени статуса по его ID
 
-        :param status_id:
-        :return:
-        """
+if __name__ == '__main__':
+    statuses = asyncio.run(PipelineFetcher.get_pipeline_statuses())
+    print([type(key) for key in statuses.keys()])

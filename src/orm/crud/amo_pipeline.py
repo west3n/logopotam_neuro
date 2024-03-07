@@ -1,3 +1,5 @@
+import asyncio
+
 from src.api.amoCRM.pipelines import PipelineFetcher
 from src.orm.models.amo_pipeline import PipelineStatuses
 from src.orm.session import get_session
@@ -14,3 +16,7 @@ async def add_pipeline_statuses():
                 do_nothing_stmt = insert_stmt.on_conflict_do_nothing(index_elements=['id'])
                 await session.execute(do_nothing_stmt)
             await session.commit()
+
+
+if __name__ == "__main__":
+    asyncio.run(add_pipeline_statuses())

@@ -1,4 +1,5 @@
 import asyncio
+
 import aiohttp
 
 from src.core.config import settings, headers
@@ -12,14 +13,21 @@ class ContactFetcher:
 
         :return: Список контактов, каждый из которых в формате JSON
         """
-        url = settings.AMO_SUBDOMAIN_URL + '/api/v4/contacts'
+        url = settings.AMO_SUBDOMAIN_URL + 'api/v4/contacts'
         async with aiohttp.ClientSession() as session:
             async with session.get(url=url, headers=headers.AMO_HEADERS) as response:
                 response_json = await response.json()
                 return response_json['_embedded']['contacts']
 
+    @staticmethod
+    async def get_contact_by_id(contact_id: str):
+        """
+        Получение информации о контакте через его ID
 
-if __name__ == '__main__':
-    contacts = asyncio.run(ContactFetcher.get_all_contacts())
-    for contact in contacts:
-        print(contact)
+        :param contact_id: ID контакта в строковом формате
+        :return:
+        """
+        url = settings.AMO_SUBDOMAIN_URL + 'api/v4/contacts/' + str(contact_id)
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url=url, headers=headers.AMO_HEADERS) as response:
+                return await response.json()
