@@ -1,5 +1,3 @@
-import asyncio
-
 from instructor import llm_validator
 from datetime import datetime
 from pydantic import BaseModel, Field, field_validator, BeforeValidator
@@ -63,16 +61,3 @@ class SurveyInitialCheck(BaseModel):
             ],
         )
         return survey_initial_check.baby_age, survey_initial_check.segment, survey_initial_check.for_online
-
-
-if __name__ == '__main__':
-    baby_age, segment, for_online = asyncio.run(SurveyInitialCheck.get_survey_initial_check(
-        {
-            'Имя ребёнка': 'Ирина',
-            'Дата рождения': '29.04.2020',
-            'Страна/город': 'Санкт-Петербург',
-            'Подробнее о запросе': 'некоторые буквы и слова плохо проговаривает',
-            'Диагноз(если есть)': 'Нет'
-        }
-    ))
-    print(baby_age, segment, for_online)

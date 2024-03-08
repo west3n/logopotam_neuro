@@ -1,5 +1,3 @@
-import asyncio
-
 from sqlalchemy import select
 
 from src.orm.session import get_session
@@ -17,7 +15,3 @@ class AmoContactsCRUD:
             async with session.begin():
                 contact = select(AmoContacts).where(AmoContacts.phone == phone_number)
         return contact is not None
-
-
-if __name__ == '__main__':
-    asyncio.run(AmoContactsCRUD.check_contact_by_phone('5555555555'))

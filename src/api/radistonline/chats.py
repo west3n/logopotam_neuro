@@ -2,9 +2,10 @@ import aiohttp
 
 from src.core.config import settings, headers
 from src.api.radistonline.connect import RadistOnlineConnect
+from src.api.radistonline.contacts import RadistOnlineContacts
 
 
-class RadistonlineChats:
+class RadistOnlineChats:
     @staticmethod
     async def get_all_chats():
         """
@@ -18,17 +19,18 @@ class RadistonlineChats:
                 return response_json["data"]
 
     @staticmethod
-    async def create_new_chat(contact_id: int, name: str, phone: str):
+    async def create_new_chat(name: str, phone: str):
         """
         Создание нового чата
 
-        :param contact_id: ID контакта, с которым необходимо начать чат
-        :param name: Имя пользователя, с которым необходимо начать чат
-        :param phone: Номер телефона пользователя, с которым необходимо начать чат
+        :param name: Имя пользователя
+        :param phone: Номер телефона пользователя
         :return: Текст с успешным созданием чата и его ID или текст и код ошибки
         """
         url = settings.RADIST_SUBDOMAIN_URL + "messaging/chats/"
         connection_id = await RadistOnlineConnect.get_connection_id()
+        _, contact_id = await RadistOnlineContacts.create_contact(name, phone)
+        print(_, contact_id)
         data = {
             "connection_id": connection_id,
             "contact_id": contact_id,

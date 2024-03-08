@@ -1,4 +1,3 @@
-import asyncio
 import aiohttp
 
 from src.core.config import settings, headers

@@ -1,4 +1,3 @@
-import asyncio
 import aiohttp
 
 from src.core.config import settings, headers
@@ -31,8 +30,3 @@ class CustomFieldsFetcher:
                 fields_list = response_json['custom_fields_values']
                 fields_dict = {item['field_name']: item['values'][0]['value'] for item in fields_list} if fields_list else None
                 return fields_dict
-
-
-if __name__ == '__main__':
-    fields = asyncio.run(CustomFieldsFetcher.get_survey_lead_fields('4539483'))
-    print(fields)

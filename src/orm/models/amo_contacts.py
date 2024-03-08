@@ -17,4 +17,3 @@ class AmoContacts(BaseModel):
     doctor_enquiry = Column("doctor_enquiry", String(200))
     diagnosis = Column("diagnosis", String(500))
     segment = Column("segment", String(1))
-

@@ -3,7 +3,7 @@ import aiohttp
 from src.core.config import settings, headers
 
 
-class RadistonlineContacts:
+class RadistOnlineContacts:
     @staticmethod
     async def get_contacts():
         """

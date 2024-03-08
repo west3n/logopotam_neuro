@@ -1,4 +1,3 @@
-
 import aiohttp
 
 from src.api.radistonline.connect import RadistOnlineConnect
@@ -12,9 +11,9 @@ class RadistOnlineWebhook:
         Получение всех активных вебхуков
         :return: Список вебхуков
         """
-        url = settings.RADIST_SUBDOMAIN_URL + '/webhooks'
+        url = settings.RADIST_SUBDOMAIN_URL + '/webhooks/'
         async with aiohttp.ClientSession() as session:
-            async with session.post(url=url, headers=headers.RADIST_HEADERS) as response:
+            async with session.get(url=url, headers=headers.RADIST_HEADERS) as response:
                 return await response.json()
 
     @staticmethod
@@ -40,5 +39,20 @@ class RadistOnlineWebhook:
             async with session.post(url=url, headers=headers.RADIST_HEADERS, json=data) as response:
                 if response.status == 200:
                     return f"Подписка на webhook с URL {webhook_url} успешно создана!"
+                else:
+                    return f"Возникла ошибка {response.status} c текстом:\n{await response.text()}"
+
+    @staticmethod
+    async def delete_webhook(webhook_id: str):
+        """
+        Удаление подписки на вебхук.
+        :param webhook_id: ID подписки
+        :return: Строка об успешном удалении или строка с кодом и тексом ошибки
+        """
+        url = settings.RADIST_SUBDOMAIN_URL + '/webhooks/' + webhook_id
+        async with aiohttp.ClientSession() as session:
+            async with session.delete(url=url, headers=headers.RADIST_HEADERS) as response:
+                if response.status == 204:
+                    return f"Подписка на webhook с ID {webhook_id} успешно удалена!"
                 else:
                     return f"Возникла ошибка {response.status} c текстом:\n{await response.text()}"

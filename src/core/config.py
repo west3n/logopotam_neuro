@@ -88,9 +88,9 @@ class CustomLogger:
         info_handler.setFormatter(formatter)
 
         # Создаем обработчик для записи WARNING-сообщений в файл logs/warning.log
-        webhook_handler = logging.FileHandler(os.path.join(log_folder, 'warning.log'))
-        webhook_handler.setLevel(logging.WARNING)
-        webhook_handler.setFormatter(formatter)
+        warning_handler = logging.FileHandler(os.path.join(log_folder, 'warning.log'))
+        warning_handler.setLevel(logging.WARNING)
+        warning_handler.setFormatter(formatter)
 
         # Создаем обработчик для записи ERROR-сообщений в файл logs/error.log
         error_handler = logging.FileHandler(os.path.join(log_folder, 'error.log'))
@@ -104,7 +104,7 @@ class CustomLogger:
 
         # Добавляем обработчики к логгеру
         self.logger.addHandler(info_handler)
-        self.logger.addHandler(webhook_handler)
+        self.logger.addHandler(warning_handler)
         self.logger.addHandler(error_handler)
         self.logger.addHandler(critical_handler)
 

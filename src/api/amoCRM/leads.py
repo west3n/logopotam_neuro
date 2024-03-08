@@ -1,4 +1,3 @@
-import asyncio
 import aiohttp
 
 from src.api.amoCRM.pipelines import PipelineFetcher
@@ -77,8 +76,3 @@ class LeadFetcher:
                         return "Возникла проблема при изменении статуса!\n" + await response.text()
         else:
             return f"Данного статуса не существует! Доступные варианты:\n{', '.join(available_statuses)}"
-
-
-if __name__ == "__main__":
-    leads = asyncio.run(LeadFetcher.get_all_leads())
-    print(leads)

@@ -11,5 +11,5 @@ class AmoStatuses(BaseModel):
     __tablename__ = "amo_statuses"
 
     status_id = Column("status_id", Integer, primary_key=True)
-    pipeline_id = Column(Integer, ForeignKey(AmoPipelines.pipeline_id))
+    pipeline_id = Column(Integer, ForeignKey(AmoPipelines.pipeline_id))  # noqa
     name = Column("name", String(200))
