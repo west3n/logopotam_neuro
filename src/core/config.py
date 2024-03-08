@@ -1,6 +1,9 @@
+import instructor
 import decouple
 import logging
 import os
+
+from openai import OpenAI, AsyncOpenAI
 
 
 class Settings:
@@ -16,14 +19,12 @@ class Settings:
     RADIST_SUBDOMAIN_URL: str = decouple.config('RADIST_SUBDOMAIN_URL')
     RADIST_COMPANY_ID: str = decouple.config('RADIST_COMPANY_ID')
 
-    # OpenAI Assistant
-    ASSISTANT_SUBDOMAIN_URL: str = decouple.config('ASSISTANT_SUBDOMAIN_URL')
-
     # SQLAlchemy
     SQLALCHEMY_DATABASE_URI: str = decouple.config("SQLALCHEMY_DATABASE_URI")
 
     # OpenAI
     OPENAI_API_KEY: str = decouple.config("OPENAI_API_KEY")
+    OPENAI_ASSISTANT_ID = decouple.config("OPENAI_ASSISTANT_ID")
 
 
 class Headers:
@@ -39,21 +40,27 @@ class Headers:
         'Content-Type': 'application/json'
     }
 
-    ASSISTANT_HEADERS: dict = {
-        'Content-Type': 'application/json'
-    }
 
-
-class CustomFormatter(logging.Formatter):
+class OpenaiClients:
     """
-    Создаём кастомный formatter для кастомного loggera для удобного чтения
+    Инициализация различных клиентов OpenAI
     """
-
-    def format(self, record):
-        separator = '-' * 50
-        if record.levelname == 'WARNING':
-            record.levelname = 'WEBHOOK'
-        return f"{super().format(record)}\n{separator}"
+    OPENAI_CLIENT = OpenAI(
+        api_key=Settings.OPENAI_API_KEY
+    )
+    OPENAI_ASYNC_CLIENT = AsyncOpenAI(
+        api_key=Settings.OPENAI_API_KEY
+    )
+    OPENAI_INSTRUCTOR_CLIENT = instructor.patch(
+        client=OpenAI(
+            api_key=Settings.OPENAI_API_KEY
+        )
+    )
+    OPENAI_ASYNC_INSTRUCTOR_CLIENT = instructor.patch(
+        client=AsyncOpenAI(
+            api_key=Settings.OPENAI_API_KEY
+        )
+    )
 
 
 class CustomLogger:
@@ -72,15 +79,16 @@ class CustomLogger:
             os.makedirs(log_folder)
 
         # Создаем форматтер для сообщений лога с разделителем
-        formatter = CustomFormatter('%(asctime)s - %(levelname)s - %(message)s')
+        separator = '-' * 50
+        formatter = logging.Formatter(f'%(asctime)s - %(levelname)s - %(message)s\n{separator}')
 
         # Создаем обработчик для записи INFO-сообщений в файл logs/info.log
         info_handler = logging.FileHandler(os.path.join(log_folder, 'info.log'))
         info_handler.setLevel(logging.INFO)
         info_handler.setFormatter(formatter)
 
-        # Создаем обработчик для записи WEBHOOK-сообщений в файл logs/webhook.log
-        webhook_handler = logging.FileHandler(os.path.join(log_folder, 'webhook.log'))
+        # Создаем обработчик для записи WARNING-сообщений в файл logs/warning.log
+        webhook_handler = logging.FileHandler(os.path.join(log_folder, 'warning.log'))
         webhook_handler.setLevel(logging.WARNING)
         webhook_handler.setFormatter(formatter)
 
@@ -103,7 +111,7 @@ class CustomLogger:
     def info(self, message):
         self.logger.info(message)
 
-    def webhook(self, message):
+    def warning(self, message):
         self.logger.warning(message)
 
     def error(self, message):
@@ -116,3 +124,4 @@ class CustomLogger:
 logger = CustomLogger()
 settings = Settings()
 headers = Headers()
+openai_clients = OpenaiClients()
