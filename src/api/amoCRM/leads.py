@@ -52,7 +52,7 @@ class LeadFetcher:
                     return "Возникла проблема при изменении имени!\n" + await response.text()
 
     @staticmethod
-    async def change_lead_status(lead_id: str, status_name: str):
+    async def change_lead_status(lead_id: int, status_name: str):
         """
         Изменение статуса лида.
 

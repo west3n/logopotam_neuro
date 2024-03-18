@@ -1,3 +1,5 @@
+import asyncio
+
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
@@ -49,6 +51,20 @@ class AmoLeadsCRUD:
             await session.commit()
 
     @staticmethod
+    async def get_lead_by_id(lead_id):
+        """
+        Проверка наличия сделки в БД
+        :param lead_id: ID сделки
+        :return: True/False в зависимости от наличия/отсутствия сделки
+        """
+        async_session = await get_session()
+        async with async_session() as session:
+            async with session.begin():
+                result = await session.execute(select(AmoLeads).where(AmoLeads.lead_id == lead_id))
+                lead = result.fetchone()
+                return lead is not None
+
+    @staticmethod
     async def save_new_chat_id(lead_id: int, chat_id: int):
         """
         Сохраняем chat_id для новой сделки
@@ -74,8 +90,8 @@ class AmoLeadsCRUD:
     @staticmethod
     async def change_lead_status(lead_id: int, status_id: int):
         """
-        Здесь мы меняем статус задачи в БД
-        :param lead_id: ID задачи
+        Здесь мы меняем статус сделки в БД
+        :param lead_id: ID сделки
         :param status_id: ID нового статуса
         """
         async_session = await get_session()
@@ -86,3 +102,18 @@ class AmoLeadsCRUD:
                 if lead:
                     lead.status_id = status_id
             await session.commit()
+
+    @staticmethod
+    async def get_value_by_chat_id(chat_id: int, column: str):
+        """
+        Здесь мы получаем значение указанного столбца у определённого chat_id
+        :param chat_id: ID чата
+        :param column: Имя столбца, значение которого нужно получить
+        :return: Значение указанного столбца
+        """
+        async_session = await get_session()
+        async with async_session() as session:
+            async with session.begin():
+                result = await session.execute(select(getattr(AmoLeads, column)).where(AmoLeads.chat_id == chat_id))
+                value = result.fetchone()
+        return value[0] if value else None

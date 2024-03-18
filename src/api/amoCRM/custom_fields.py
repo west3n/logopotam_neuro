@@ -30,3 +30,47 @@ class CustomFieldsFetcher:
                 fields_list = response_json['custom_fields_values']
                 fields_dict = {item['field_name']: item['values'][0]['value'] for item in fields_list} if fields_list else None
                 return fields_dict
+
+    @staticmethod
+    async def save_survey_lead_fields(lead_id: int, child_data: dict):
+        """
+        Сохраняем полученные данные по анкете через словарь с полученными данными
+
+        :param lead_id: ID сделки
+        :param child_data: Словарь с данными, полученными от клиента
+        :return:
+        """
+        data = {'custom_fields_values': []}
+        fields_list = [(field['id'], field['name']) for field in await CustomFieldsFetcher.get_available_fields()]
+
+        field_mapping = {
+            'child_name': 'Имя ребёнка',
+            'child_birth_date': 'Дата рождения',
+            'city': 'Страна/город',
+            'doctor_enquiry': 'Подробнее о запросе',
+            'diagnosis': 'Диагноз (если есть)',
+            'segment': "Сегмент"
+        }
+
+        for field, field_name in field_mapping.items():
+            if field in child_data:
+                field_id = None
+                for item in fields_list:
+                    if item[1] == field_name:
+                        field_id = item[0]
+                        break
+
+                if field_id is not None:
+                    # Переводим datetime в строку, чтобы записать в amoCRM
+                    field_value = child_data[field] if field_name != 'Дата рождения' else child_data[field].strftime('%d-%m-%Y')
+                    data['custom_fields_values'].append({
+                        'field_id': field_id,
+                        'field_name': field_name,
+                        'values': [{'value': field_value}]
+                    })
+
+        url = settings.AMO_SUBDOMAIN_URL + '/api/v4/leads/' + str(lead_id) + '?with=contacts'
+        async with aiohttp.ClientSession() as session:
+            async with session.patch(url=url, headers=headers.AMO_HEADERS, json=data) as response:
+                if response.status == 200:
+                    return await CustomFieldsFetcher.get_survey_lead_fields(str(lead_id))

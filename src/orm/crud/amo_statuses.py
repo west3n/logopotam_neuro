@@ -1,3 +1,6 @@
+import asyncio
+
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
 from src.orm.session import get_session
@@ -32,3 +35,17 @@ class AmoStatusesCRUD:
                     )
                     await session.execute(status_do_nothing_stmt)
                 await session.commit()
+
+    @staticmethod
+    async def get_id_status_by_name(status_name):
+        """
+        Здесь мы получаем ID статуса по его имени
+        :param status_name: Имя статуса
+        :return: ID статуса
+        """
+        async_session = await get_session()
+        async with async_session() as session:
+            async with session.begin():
+                result = await session.execute(select(AmoStatuses.status_id).where(AmoStatuses.name == status_name))
+                status_id = result.fetchone()
+                return status_id[0]

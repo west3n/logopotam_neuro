@@ -1,3 +1,5 @@
+import asyncio
+
 import aiohttp
 
 from src.core.config import settings, headers
@@ -15,3 +17,8 @@ class RadistOnlineConnect:
             async with session.get(url=url, headers=headers.RADIST_HEADERS) as response:
                 response_json = await response.json()
                 return int(response_json['connections'][0]['id'])
+
+
+if __name__ == '__main__':
+    connection_id = asyncio.run(RadistOnlineConnect.get_connection_id())
+    print(connection_id)

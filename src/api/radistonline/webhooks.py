@@ -1,3 +1,4 @@
+import asyncio
 import aiohttp
 
 from src.api.radistonline.connect import RadistOnlineConnect
@@ -29,9 +30,9 @@ class RadistOnlineWebhook:
             "url": webhook_url,
             "events": [
                 "messages.create",
-                'messages.delivery.delivered',
-                'messages.delivery.read',
-                'messages.delivery.error'
+                "messages.delivery.delivered",
+                "messages.delivery.read",
+                "messages.delivery.error"
             ],
             "connection_id": connection_id
         }
@@ -56,3 +57,8 @@ class RadistOnlineWebhook:
                     return f"Подписка на webhook с ID {webhook_id} успешно удалена!"
                 else:
                     return f"Возникла ошибка {response.status} c текстом:\n{await response.text()}"
+
+
+if __name__ == "__main__":
+    webhooks = asyncio.run(RadistOnlineWebhook.get_webhooks())
+    print(webhooks)
