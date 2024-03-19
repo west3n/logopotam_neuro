@@ -8,18 +8,17 @@ from src.api.amoCRM.leads import LeadFetcher
 from src.api.amoCRM.contacts import ContactFetcher
 from src.api.amoCRM.pipelines import PipelineFetcher
 from src.api.amoCRM.custom_fields import CustomFieldsFetcher
-
 from src.api.radistonline.messages import RadistonlineMessages
 from src.api.radistonline.chats import RadistOnlineChats
 
-
 from src.core.config import logger
 from src.core.texts import FirstStepTexts
+
 from src.dialog.steps.first.llm_instructor import SurveyInitialCheck
 
 from src.orm.crud.amo_leads import AmoLeadsCRUD
 from src.orm.crud.radist_messages import RadistMessagesCRUD
-from src.orm.crud.chat_steps import ChatStepsCRUD
+from src.orm.crud.radist_chats import ChatStepsCRUD
 from src.orm.crud.amo_contacts import AmoContactsCRUD
 
 
@@ -59,14 +58,15 @@ async def amo_data_processing(data):
             logger.info(f"Изменили статус задачи с ID {new_lead_id} на Требуется менеджер")
         else:
             # Меняем статус задачи на "Старт Нейро"
-            await LeadFetcher.change_lead_status(
+            _, new_status_id = await LeadFetcher.change_lead_status(
                 lead_id=new_lead_id,
                 status_name='Старт Нейро'
             )
             logger.info(f"Изменили статус задачи с ID {new_lead_id} на Старт Нейро")
 
-            # Сохраняем данные нового лида
+            # Сохраняем данные нового лида и меняем его статус
             await AmoLeadsCRUD.save_new_lead(new_lead_data, contact_data)
+            await AmoLeadsCRUD.change_lead_status(int(new_lead_id), int(new_status_id))
             logger.info(f"Сохранили данные по новому лиду с ID {new_lead_id}")
 
             # Засыпаем на 4 минуты, пока amoCRM занимается сборкой данных по клиенту
@@ -144,8 +144,7 @@ async def amo_data_processing(data):
                     logger.info(f"Отправили и сохранили первое сообщение в сделке с ID {new_lead_id}")
 
                     # Переводим пользователя в шаг 1.0, в котором ему нужно просто ответить Да или Нет.
-                    await ChatStepsCRUD.create(lead_id=new_lead_id,
-                                               step="1.0")
+                    await ChatStepsCRUD.update(chat_id=chat_id, step="1.0")
 
             else:
                 # Здесь мы создаём новый чат в Radist.Online и начинаем диалог с сообщения при незаполненном опросе
@@ -186,17 +185,17 @@ async def amo_data_processing(data):
                 logger.info(f"Отправили и сохранили первое сообщение в незаполненной сделке с ID {new_lead_id}")
 
                 # Сохраняем шаг в диалоге у конкретной сделки
-                await ChatStepsCRUD.create(lead_id=new_lead_id, step="1.1")
+                await ChatStepsCRUD.update(chat_id=chat_id, step="1.1")
 
     except KeyError:
         # Обработка смены статуса задачи c сохранением нового ID в базу данных
-        lead_id = int(data['leads[status][0][id]'])  # noqa
+        lead_id = int(data['leads[status][0][id]'])
+
         # Проверяем наличие лида в БД
         lead_exist = await AmoLeadsCRUD.get_lead_by_id(lead_id)
         if lead_exist:
             new_status_id = int(data['leads[status][0][status_id]'])  # noqa
             new_status_name = await PipelineFetcher.get_pipeline_status_name_by_id(new_status_id)
-
             await AmoLeadsCRUD.change_lead_status(lead_id, new_status_id)
             logger.info(f"У задачи с ID {lead_id} изменился статус. Новый статус: {new_status_name}")
         else:

@@ -71,7 +71,7 @@ class LeadFetcher:
             async with (aiohttp.ClientSession() as session):
                 async with session.patch(url=url, headers=headers.AMO_HEADERS, json=data) as response:
                     if response.status == 200:
-                        return "Статус изменен успешно!"
+                        return "Статус изменен успешно!", status_id
                     else:
                         return "Возникла проблема при изменении статуса!\n" + await response.text()
         else:

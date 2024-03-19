@@ -3,11 +3,13 @@
 используется лишь в случае, когда новая сделка в amoCRM приходит с пустой анкетой. В случае, когда анкета уже
 была заполнена, первый шаг пропускается.
 """
+import asyncio
+
 from src.api.amoCRM.leads import LeadFetcher
-from src.dialog.steps.first.llm_instructor import SurveyFullCheck, SurveyInitialCheck
+from src.dialog.steps.first.llm_instructor import SurveyConfirmation, SurveyFullCheck, SurveyInitialCheck
 
 from src.orm.crud.amo_contacts import AmoContactsCRUD
-from src.orm.crud.chat_steps import ChatStepsCRUD
+from src.orm.crud.radist_chats import ChatStepsCRUD
 
 from src.api.amoCRM.custom_fields import CustomFieldsFetcher
 from src.api.radistonline.messages import RadistonlineMessages
@@ -16,9 +18,36 @@ from src.core.config import openai_clients, logger
 from src.core.texts import FirstStepTexts, SecondStepTexts
 
 
-async def first_step_handler(messages_text: str, contact_id: int, chat_id: int, lead_id: int):
+async def step_1_0_handler(messages_text: str, chat_id: int, lead_id: int):
     """
-    В этой функции мы используем инструктора для обработки данных для заполнения анкеты
+    В этой функции мы используем инструктора, который обрабатывает подтверждение правильности анкеты от пользователя
+    :param messages_text: Текст сообщения WhatsApp
+    :param chat_id: ID чата в Radist.Online
+    :param lead_id: ID сделки в amoCRM
+    """
+    instructor_answer = await SurveyConfirmation.get_survey_confirmation(messages_text)
+
+    if instructor_answer:
+        # Если ответ от пользователя положительный, переводим его на шаг 2.0 и отправляем ответное сообщение
+        await RadistonlineMessages.send_message(
+            chat_id=chat_id,
+            text=SecondStepTexts.FIRST_MESSAGE_TEXT
+        )
+        await ChatStepsCRUD.update(chat_id, "2.0")
+        logger.info(f"Перевели пользователя с ID чата {chat_id} на шаг 2.0")
+    else:
+        # Если ответ от пользователя отрицательный, то отдаём сделку менеджеру
+        await LeadFetcher.change_lead_status(
+            lead_id=lead_id,
+            status_name='Требуется менеджер'
+        )
+        logger.info(f"Изменили статус задачи с ID {lead_id} на Требуется менеджер, "
+                    f"так как пользователь не подтвердил данные по анкете")
+
+
+async def step_1_1_handler(messages_text: str, contact_id: int, chat_id: int, lead_id: int):
+    """
+    В этой функции мы используем инструктора для обработки данных для заполнения анкеты, шаг 1.1
     :param messages_text: Текст сообщений, полученный в WhatsApp
     :param contact_id: ID контакта клиента
     :param chat_id: ID чата клиента
@@ -72,9 +101,6 @@ async def first_step_handler(messages_text: str, contact_id: int, chat_id: int, 
                 "diagnosis": "Наблюдается ли ребенок у невролога"
             }
             gpt_answers = ", ".join(answers[field] for field in list(unanswered_fields_complete))
-            print(30 * "*")
-            print(unanswered_fields_complete)
-            print(30 * "*")
             completion = await client.chat.completions.create(
                 model="gpt-4-turbo-preview",
                 messages=[
@@ -112,18 +138,25 @@ async def first_step_handler(messages_text: str, contact_id: int, chat_id: int, 
                     lead_id=lead_id,
                     status_name='Требуется менеджер'
                 )
-                await CustomFieldsFetcher.save_survey_lead_fields(lead_id, {'segment': segment})
                 logger.info(f"Изменили статус задачи с ID {lead_id} на Требуется менеджер, "
                             f"так как сделка не прошла первичную проверку")
 
             # Если проверка пройдена, то отправляем клиенту второе сообщение
             else:
-                await ChatStepsCRUD.update(lead_id, "2.0")
                 await RadistonlineMessages.send_message(
                     chat_id=chat_id,
                     text=SecondStepTexts.FIRST_MESSAGE_TEXT
                 )
+                await asyncio.sleep(5)
+                await RadistonlineMessages.send_message(
+                    chat_id=chat_id,
+                    text=SecondStepTexts.FIRST_MESSAGE_QUESTION_TEXT
+                )
+                await ChatStepsCRUD.update(chat_id, "2.0")
 
+            # Сохраняем сегмент в БД и amoCRM
+            await AmoContactsCRUD.update_contact_values(contact_id, {'segment': segment})
+            await CustomFieldsFetcher.save_survey_lead_fields(lead_id, {'segment': segment})
     # Это исключение отработает только в случае, если клиент с первого раза указал все необходимые поля
     else:
         survey_data = await CustomFieldsFetcher.save_survey_lead_fields(lead_id, answers)
@@ -137,14 +170,22 @@ async def first_step_handler(messages_text: str, contact_id: int, chat_id: int, 
                 lead_id=lead_id,
                 status_name='Требуется менеджер'
             )
-            await CustomFieldsFetcher.save_survey_lead_fields(lead_id, {'segment': segment})
             logger.info(f"Изменили статус задачи с ID {lead_id} на Требуется менеджер, "
                         f"так как сделка не прошла первичную проверку")
 
-        # Если проверка пройдена, то отправляем клиенту второе сообщение
+        # Если проверка пройдена, то отправляем клиенту второе сообщение и сохраняем сегмент в БД
         else:
-            await ChatStepsCRUD.update(lead_id, "2.0")
             await RadistonlineMessages.send_message(
                 chat_id=chat_id,
                 text=SecondStepTexts.FIRST_MESSAGE_TEXT
             )
+            await asyncio.sleep(5)
+            await RadistonlineMessages.send_message(
+                chat_id=chat_id,
+                text=SecondStepTexts.FIRST_MESSAGE_QUESTION_TEXT
+            )
+            await ChatStepsCRUD.update(chat_id, "2.0")
+
+        # Сохраняем сегмент в БД и amoCRM
+        await AmoContactsCRUD.update_contact_values(contact_id, {'segment': segment})
+        await CustomFieldsFetcher.save_survey_lead_fields(lead_id, {'segment': segment})

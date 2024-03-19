@@ -1,4 +1,5 @@
 import asyncio
+from typing import Union, List
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
@@ -51,7 +52,7 @@ class AmoLeadsCRUD:
             await session.commit()
 
     @staticmethod
-    async def get_lead_by_id(lead_id):
+    async def get_lead_by_id(lead_id: int):
         """
         Проверка наличия сделки в БД
         :param lead_id: ID сделки
@@ -104,16 +105,24 @@ class AmoLeadsCRUD:
             await session.commit()
 
     @staticmethod
-    async def get_value_by_chat_id(chat_id: int, column: str):
+    async def get_value_by_chat_id(chat_id: int, column: Union[str, List[str]]):
         """
         Здесь мы получаем значение указанного столбца у определённого chat_id
         :param chat_id: ID чата
-        :param column: Имя столбца, значение которого нужно получить
-        :return: Значение указанного столбца
+        :param column: Имя столбца или список имен столбцов, значения которых нужно получить
+        :return: Значение указанного столбца или список значений
         """
         async_session = await get_session()
         async with async_session() as session:
             async with session.begin():
-                result = await session.execute(select(getattr(AmoLeads, column)).where(AmoLeads.chat_id == chat_id))
-                value = result.fetchone()
-        return value[0] if value else None
+                if isinstance(column, str):
+                    # Если column - строка, то выполняем запрос для одного столбца
+                    result = await session.execute(select(getattr(AmoLeads, column)).where(AmoLeads.chat_id == chat_id))
+                    value = result.fetchone()
+                    return value[0] if value else None
+                elif isinstance(column, list):
+                    # Если column - список, то выполняем запрос для всех столбцов из списка
+                    select_columns = [getattr(AmoLeads, col) for col in column]
+                    result = await session.execute(select(*select_columns).where(AmoLeads.chat_id == chat_id))
+                    values = result.fetchall()
+                    return values[0] if values else None

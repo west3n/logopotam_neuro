@@ -10,5 +10,5 @@ class RadistChats(BaseModel):
     __tablename__ = "radist_chats"
 
     chat_id = Column("chat_id", Integer, primary_key=True)
-    # step_id = Column("step_id", Integer, ForeignKey(ChatSteps.step_id))
     thread_id = Column("thread_id", String(50))
+    step = Column("step", String(20))

@@ -38,7 +38,8 @@ class RadistMessagesCRUD:
             async with session.begin():
                 result = await session.execute(
                     select(func.count()).where(and_(
-                        RadistMessages.chat_id == data['event']['chat_id'], RadistMessages.status == 'unanswered'
+                        RadistMessages.chat_id == data['event']['chat_id'], RadistMessages.status == 'unanswered',
+                        RadistMessages.sender != 'robot'
                     ))
                 )
                 count = result.scalar()
