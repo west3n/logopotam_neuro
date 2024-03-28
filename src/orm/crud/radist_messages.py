@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 from sqlalchemy import select, update, and_, func
 from sqlalchemy.dialects.postgresql import insert
@@ -71,3 +72,16 @@ class RadistMessagesCRUD:
                 stmt = (update(RadistMessages).where(RadistMessages.message_id == message_id).values(status=new_status))
                 await session.execute(stmt)
                 await session.commit()
+
+    @staticmethod
+    async def get_last_robot_message_text(chat_id: int):
+        async_session = await get_session()
+        async with async_session() as session:
+            async with session.begin():
+                result = await session.execute(
+                    select(RadistMessages.text).where(
+                        and_(RadistMessages.chat_id == chat_id, RadistMessages.sender == 'robot')
+                    ).order_by(RadistMessages.send_time.desc()).limit(1)
+                )
+                message = result.fetchone()
+                return message[0] if message else None

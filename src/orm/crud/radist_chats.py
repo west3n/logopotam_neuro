@@ -42,31 +42,31 @@ class RadistChatsCRUD:
 
 class ChatStepsCRUD:
     @staticmethod
-    async def update(chat_id: int, step: str):
+    async def update(chat_id: int, step: str = None, complain_step: str = None):
         """
-        Функция для добавления нового шага в таблицу amo_chats или обновления существующей записи
+        Функция для добавления нового шага в алгоритме или жалобе в таблицу amo_chats или обновления существующей записи
         :param chat_id: ID чата
         :param step: Шаг чата
+        :param complain_step: Шаг жалобы
         """
         chat_id = int(chat_id) if type(chat_id) is str else chat_id
         async_session = await get_session()
         async with async_session() as session:
             async with session.begin():
-                new_lead_step = update(RadistChats).values(step=step).where(RadistChats.chat_id == chat_id) # noqa
+                if complain_step:
+                    new_lead_step = update(RadistChats).values(complain_step=complain_step).where(
+                        RadistChats.chat_id == chat_id)  # noqa
+                else:
+                    new_lead_step = update(RadistChats).values(step=step).where(RadistChats.chat_id == chat_id)  # noqa
                 await session.execute(new_lead_step)
                 await session.commit()
 
     @staticmethod
-    async def read(chat_id: int):
-        """
-        Получает значение шага чата по ID лида
-        :param chat_id: ID чата
-        :return: Значение шага чата
-        """
+    async def get_step_and_complain_step(chat_id: int):
         chat_id = int(chat_id) if type(chat_id) is str else chat_id
         async_session = await get_session()
         async with async_session() as session:
             async with session.begin():
-                result = await session.execute(select(RadistChats.step).where(RadistChats.chat_id == chat_id)) # noqa
-                chat_step = result.fetchone()
-                return chat_step[0] if chat_step else None
+                result = await session.execute(select(RadistChats.step, RadistChats.complain_step).where(RadistChats.chat_id == chat_id)) # noqa
+                chat_step, complain_step = result.fetchone()
+                return chat_step, complain_step

@@ -18,6 +18,8 @@ class Settings:
     RADIST_API_KEY: str = decouple.config('RADIST_API_KEY')
     RADIST_SUBDOMAIN_URL: str = decouple.config('RADIST_SUBDOMAIN_URL')
     RADIST_COMPANY_ID: str = decouple.config('RADIST_COMPANY_ID')
+    ONLINE_ADVANTAGES_IMAGE_URL: str = decouple.config("ONLINE_ADVANTAGES_IMAGE_URL")
+    ZOOM_IMAGE_URL: str = decouple.config("ZOOM_IMAGE_URL")
 
     # SQLAlchemy
     SQLALCHEMY_DATABASE_URI: str = decouple.config("SQLALCHEMY_DATABASE_URI")

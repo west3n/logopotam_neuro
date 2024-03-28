@@ -39,7 +39,7 @@ async def step_1_0_handler(messages_text: str, chat_id: int, lead_id: int):
         # Если ответ от пользователя отрицательный, то отдаём сделку менеджеру
         await LeadFetcher.change_lead_status(
             lead_id=lead_id,
-            status_name='Требуется менеджер'
+            status_name='ТРЕБУЕТСЯ МЕНЕДЖЕР'
         )
         logger.info(f"Изменили статус задачи с ID {lead_id} на Требуется менеджер, "
                     f"так как пользователь не подтвердил данные по анкете")
@@ -84,11 +84,8 @@ async def step_1_1_handler(messages_text: str, contact_id: int, chat_id: int, le
     # и отдать их в обработку в GPT для составления нового вопроса в случае, если клиент предоставил не все нужные
     # данные
     if unanswered_values:
-        print(unanswered_values)
         unanswered_fields_1 = unanswered_values.keys()
-        print(f'unanswered_fields_1: {unanswered_fields_1}')
         unanswered_fields_2, _ = await AmoContactsCRUD.get_contact_values(contact_id)
-        print(f'unanswered_fields_2: {unanswered_fields_2}')
         unanswered_fields_complete = list(set(unanswered_fields_1) & set(unanswered_fields_2))
 
         # Если есть незаполненные поля, то генерируем уточняющий вопрос с учетом незаполненных полей
@@ -136,7 +133,7 @@ async def step_1_1_handler(messages_text: str, contact_id: int, chat_id: int, le
                 # Если сделка не прошла проверку, то просто меняем статус и сохраняем сегмент
                 await LeadFetcher.change_lead_status(
                     lead_id=lead_id,
-                    status_name='Требуется менеджер'
+                    status_name='ТРЕБУЕТСЯ МЕНЕДЖЕР'
                 )
                 logger.info(f"Изменили статус задачи с ID {lead_id} на Требуется менеджер, "
                             f"так как сделка не прошла первичную проверку")
@@ -153,7 +150,6 @@ async def step_1_1_handler(messages_text: str, contact_id: int, chat_id: int, le
                     text=SecondStepTexts.FIRST_MESSAGE_QUESTION_TEXT
                 )
                 await ChatStepsCRUD.update(chat_id, "2.0")
-
             # Сохраняем сегмент в БД и amoCRM
             await AmoContactsCRUD.update_contact_values(contact_id, {'segment': segment})
             await CustomFieldsFetcher.save_survey_lead_fields(lead_id, {'segment': segment})
@@ -168,7 +164,7 @@ async def step_1_1_handler(messages_text: str, contact_id: int, chat_id: int, le
             # Если сделка не прошла проверку, то просто меняем статус и сохраняем сегмент
             await LeadFetcher.change_lead_status(
                 lead_id=lead_id,
-                status_name='Требуется менеджер'
+                status_name='ТРЕБУЕТСЯ МЕНЕДЖЕР'
             )
             logger.info(f"Изменили статус задачи с ID {lead_id} на Требуется менеджер, "
                         f"так как сделка не прошла первичную проверку")
@@ -185,7 +181,6 @@ async def step_1_1_handler(messages_text: str, contact_id: int, chat_id: int, le
                 text=SecondStepTexts.FIRST_MESSAGE_QUESTION_TEXT
             )
             await ChatStepsCRUD.update(chat_id, "2.0")
-
         # Сохраняем сегмент в БД и amoCRM
         await AmoContactsCRUD.update_contact_values(contact_id, {'segment': segment})
         await CustomFieldsFetcher.save_survey_lead_fields(lead_id, {'segment': segment})

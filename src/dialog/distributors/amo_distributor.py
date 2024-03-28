@@ -33,6 +33,7 @@ async def amo_data_processing(data):
 
     # Выявляем тип полученных данных при помощи принципа EAFP
     try:
+        print(data)
         # Обработка получения новой задачи
         new_lead_id = data['leads[add][0][id]']
         new_lead_data = await LeadFetcher.get_lead(lead_id=new_lead_id)
@@ -53,14 +54,14 @@ async def amo_data_processing(data):
             # Здесь мы просто меняем статус задачи, больше действий не требуется
             await LeadFetcher.change_lead_status(
                 lead_id=new_lead_id,
-                status_name='Требуется менеджер'
+                status_name='ТРЕБУЕТСЯ МЕНЕДЖЕР'
             )
             logger.info(f"Изменили статус задачи с ID {new_lead_id} на Требуется менеджер")
         else:
             # Меняем статус задачи на "Старт Нейро"
             _, new_status_id = await LeadFetcher.change_lead_status(
                 lead_id=new_lead_id,
-                status_name='Старт Нейро'
+                status_name='СТАРТ НЕЙРО'
             )
             logger.info(f"Изменили статус задачи с ID {new_lead_id} на Старт Нейро")
 
@@ -86,7 +87,7 @@ async def amo_data_processing(data):
                     # Если сделка не прошла проверку, то просто меняем статус
                     await LeadFetcher.change_lead_status(
                         lead_id=new_lead_id,
-                        status_name='Требуется менеджер'
+                        status_name='ТРЕБУЕТСЯ МЕНЕДЖЕР'
                     )
                     logger.info(f"Изменили статус задачи с ID {new_lead_id} на Требуется менеджер, "
                                 f"так как сделка не прошла первичную проверку")
@@ -155,8 +156,8 @@ async def amo_data_processing(data):
 
                 # Сохраняем chat_id в БД
                 await AmoLeadsCRUD.save_new_chat_id(
-                    lead_id=int(new_lead_id) if type(new_lead_id) is str else new_lead_id,
-                    chat_id=int(chat_id) if type(chat_id) is str else chat_id
+                    lead_id=int(new_lead_id) if isinstance(new_lead_id, str) else new_lead_id,
+                    chat_id=int(chat_id) if isinstance(chat_id, str) else chat_id
                 )
 
                 # Получаем текст первого сообщения и отправляем его в указанный chat_id
@@ -189,7 +190,7 @@ async def amo_data_processing(data):
 
     except KeyError:
         # Обработка смены статуса задачи c сохранением нового ID в базу данных
-        lead_id = int(data['leads[status][0][id]'])
+        lead_id = int(data['leads[status][0][id]']) # noqa
 
         # Проверяем наличие лида в БД
         lead_exist = await AmoLeadsCRUD.get_lead_by_id(lead_id)
