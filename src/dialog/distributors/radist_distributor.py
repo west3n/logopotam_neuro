@@ -3,7 +3,6 @@ import asyncio
 from src.api.amoCRM.leads import LeadFetcher
 from src.api.radistonline.messages import RadistonlineMessages
 from src.core.config import logger, settings
-from src.core.texts import ComplainTypeTexts
 
 from src.dialog.objections.llm_instructor import MessageCategoryChecker, DialogFinishChecker
 from src.dialog.objections.assistant import Assistant
@@ -23,29 +22,47 @@ async def radist_data_processing(data):
         messages_text = data['event']['message']['text']['text']
         message_id = data['event']['message']['message_id']
         try:
-            # Получаем данные по клиенту и получаем категорию сообщения и категорию жалобы, если она есть в тексте
+            # Получаем необходимые данные по клиенту
             contact_id, lead_id, status_id = await AmoLeadsCRUD.get_value_by_chat_id(
                 chat_id, ['contact_id', 'lead_id', 'status_id']
             )
 
-            # Получаем ID статуса "СТАРТ НЕЙРО" и текст последнего сообщения от ассистента в чате
+            # Получаем ID статуса "СТАРТ НЕЙРО" и получаем текст последнего сообщения от ассистента в чате
             start_neuro_status_id, robot_message_text = await AmoStatusesCRUD.get_status_id_and_last_robot_message(
                 "СТАРТ НЕЙРО", chat_id
             )
+            # Сравниваем ID статуса "СТАРТ НЕЙРО" со статусом пользователя
             if status_id == start_neuro_status_id:
+
                 # Первым делом нам нужно получить шаг алгоритма и жалобы от пользователя
                 step, complain_step = await ChatStepsCRUD.get_step_and_complain_step(chat_id)
+                print("STEP: ", step)
+                print("COMPLAIN STEP: ", complain_step)
+
                 # Если мы на втором шаге в алгоритме, то добавляем последнее сообщение
                 # от ассистента для более точного распознавания LLM-инструктором
                 messages_text = robot_message_text + "\n" + messages_text if step == '2.0' else messages_text
-                print(messages_text)
+                print("MESSAGE TEXT: ", messages_text)
                 # Проверяем категорию сообщения для распределения задачи ассистенту
-                algorythm, assistant, complain = await MessageCategoryChecker.check_message_for_objection(messages_text)
-                print(algorythm, assistant, complain)
+                algorythm, assistant = await MessageCategoryChecker.check_message_for_objection(messages_text)
+                print("ALGORYTHM: ", algorythm)
+                print("ASSISTANT: ", assistant)
+
+                # Если инструктор не распознал ни одну из категорий сообщения, то добавляем последнее сообщение от
+                # ассистента и пробуем снова
+                if not algorythm and not assistant:
+                    messages_text = robot_message_text + "\n" + messages_text
+                    algorythm, assistant = await MessageCategoryChecker.check_message_for_objection(messages_text)
+                    print("ALGORYTHM: ", algorythm)
+                    print("ASSISTANT: ", assistant)
+
                 # Если в тексте сообщения есть одна из категорий алгоритма, то задача распределяется в алгоритм
                 if algorythm and algorythm in ['name', 'city', 'birthday', 'problem', 'diagnosis', 'zoom']:
                     if step == '1.1':
                         len_messages = await RadistMessagesCRUD.save_new_message(data)
+
+                        # Здесь мы отправляемся в небольшую спячку на случай, если клиент отправит несколько сообщений
+                        # подряд
                         await asyncio.sleep(15 * len_messages)
 
                         # Теперь нам нужно получить ID и текст всех неотвеченных сообщений из этого чата
@@ -53,9 +70,9 @@ async def radist_data_processing(data):
                         if all_unanswered_messages:
                             messages_ids = [message[0] for message in all_unanswered_messages]
                             messages_text = '\n'.join([message[1] for message in all_unanswered_messages])
-                            print(f"Все неотвеченные сообщения: {messages_text}")
 
                             # Меняем статус у всех сообщений на processing, чтобы не использовать их в других процессах
+                            # и отправляем его в функцию для обработки шага 1.1
                             for message_id in messages_ids:
                                 await RadistMessagesCRUD.change_status(message_id, 'processing')
                             await step_1_1_handler(messages_text, contact_id, chat_id, lead_id)
@@ -78,33 +95,31 @@ async def radist_data_processing(data):
                         # Меняем статус у всех сообщений на answered после завершения процесса
                         await RadistMessagesCRUD.change_status(message_id, 'answered')
                 else:
-                    # Если текст сообщения не относится к общему алгоритму, то мы проверяем, жалоба это или вопрос
-                    if complain and not complain_step and complain != complain_step:
-                        print(complain)
-                        print(complain_step)
-                        complain_first_message = {
-                            'online': ComplainTypeTexts.ONLINE,
-                            'expensive': ComplainTypeTexts.EXPENSIVE,
-                            'decline': ComplainTypeTexts.DECLINE
-                        }
-                        await RadistonlineMessages.send_message(chat_id, text=complain_first_message[complain])
-                        await ChatStepsCRUD.update(chat_id=chat_id, complain_step=complain)
-                    else:
-                        response = await Assistant.get_response(chat_id, messages_text)
-                        await RadistonlineMessages.send_message(chat_id=chat_id, text=response)
-                        is_dialog_finished, send_image = await DialogFinishChecker.check_dialog_finish(response)
-                        if send_image:
-                            await RadistonlineMessages.send_image(chat_id, settings.ONLINE_ADVANTAGES_IMAGE_URL)
-                        if is_dialog_finished:
+                    # Если сообщение не является частью алгоритма, то отправляем его обученному ассистенту
+                    response = await Assistant.get_response(chat_id, messages_text)
+                    await RadistonlineMessages.send_message(chat_id=chat_id, text=response)
+
+                    # Здесь мы дополнительно проверяем сообщение ассистента на предмет завершения диалога и
+                    # необходимости прикрепить картинку к отправленному сообщению
+                    is_dialog_finished, send_image = await DialogFinishChecker.check_dialog_finish(response)
+                    print("IS DIALOG FINISHED: ", is_dialog_finished)
+                    print("SEND IMAGE: ", send_image)
+                    if send_image:
+                        await RadistonlineMessages.send_image(chat_id, settings.ONLINE_ADVANTAGES_IMAGE_URL)
+
+                    if is_dialog_finished:
+                        # Если диалог завершён на позитивной ноте, но алгоритм не завершён,
+                        # необходимо отправить сообщение клиенту в зависимости от шага алгоритма
+                        if is_dialog_finished == 'positive' and step != "COMPLETED":
+                            print("positive but not completed")
+                            # TODO: написать логику отправки сообщения
+                        else:
                             await LeadFetcher.change_lead_status(
                                 lead_id, "ТРЕБУЕТСЯ МЕНЕДЖЕР"
                             )
-                    #
-                    # await RadistMessagesCRUD.save_new_message(data)
-                    # await LeadFetcher.change_lead_status(
-                    #     lead_id, "ТРЕБУЕТСЯ МЕНЕДЖЕР"
         except TypeError:
             # Если данные не найдены, значит сообщение получено не от клиента, с которым мы общаемся
             pass
     else:
+        # Сохраняем исходящее сообщение в БД
         await RadistMessagesCRUD.save_new_message(data)

@@ -1,5 +1,3 @@
-import asyncio
-
 import aiohttp
 
 from src.core.config import settings, headers
@@ -30,7 +28,7 @@ class CustomFieldsFetcher:
             async with session.get(url=url, headers=headers.AMO_HEADERS) as response:
                 response_json = await response.json()
                 fields_list = response_json['custom_fields_values']
-                fields_dict = {item['field_name']: item['values'][0]['value'] for item in fields_list} if fields_list else None
+                fields_dict = {item['field_name']: item['values'][0]['value'] for item in fields_list} if fields_list else None # noqa
                 return fields_dict
 
     @staticmethod
@@ -64,7 +62,7 @@ class CustomFieldsFetcher:
 
                 if field_id is not None:
                     # Переводим datetime в строку, чтобы записать в amoCRM
-                    field_value = child_data[field] if field_name != 'Дата рождения' else child_data[field].strftime('%d-%m-%Y')
+                    field_value = child_data[field] if field_name != 'Дата рождения' else child_data[field].strftime('%d-%m-%Y') # noqa
                     data['custom_fields_values'].append({
                         'field_id': field_id,
                         'field_name': field_name,

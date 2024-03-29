@@ -30,7 +30,6 @@ class RadistOnlineChats:
         url = settings.RADIST_SUBDOMAIN_URL + "messaging/chats/"
         connection_id = await RadistOnlineConnect.get_connection_id()
         _, contact_id = await RadistOnlineContacts.create_contact(name, phone)
-        print(_, contact_id)
         data = {
             "connection_id": connection_id,
             "contact_id": contact_id,

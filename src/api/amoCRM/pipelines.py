@@ -1,4 +1,5 @@
 import asyncio
+
 import aiohttp
 
 from src.core.config import settings, headers
@@ -42,6 +43,19 @@ class PipelineFetcher:
                         return statuses_dict
                     else:
                         return await response.json()
+
+    @staticmethod
+    async def get_pipeline_id_by_name(name: str):
+        """
+        Получение id воронки по его имени.
+
+        :param name: Имя воронки
+        :return: id воронки, если он найден, иначе None
+        """
+        all_pipelines = await PipelineFetcher.get_pipelines()
+        pipe_dict = {pipeline['id']: pipeline['name'] for pipeline in all_pipelines}
+        pipe_id = next((pipe_id for pipe_id, pipe_name in pipe_dict.items() if pipe_name == name), None)
+        return pipe_id
 
     @staticmethod
     async def get_pipeline_status_id_by_name(name: str):

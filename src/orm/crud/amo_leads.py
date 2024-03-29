@@ -1,4 +1,3 @@
-import asyncio
 from typing import Union, List
 
 from sqlalchemy import select
@@ -61,7 +60,7 @@ class AmoLeadsCRUD:
         async_session = await get_session()
         async with async_session() as session:
             async with session.begin():
-                result = await session.execute(select(AmoLeads).where(AmoLeads.lead_id == lead_id))
+                result = await session.execute(select(AmoLeads).where(AmoLeads.lead_id == lead_id)) # noqa
                 lead = result.fetchone()
                 return lead is not None
 
@@ -117,12 +116,12 @@ class AmoLeadsCRUD:
             async with session.begin():
                 if isinstance(column, str):
                     # Если column - строка, то выполняем запрос для одного столбца
-                    result = await session.execute(select(getattr(AmoLeads, column)).where(AmoLeads.chat_id == chat_id))
+                    result = await session.execute(select(getattr(AmoLeads, column)).where(AmoLeads.chat_id == chat_id)) # noqa
                     value = result.fetchone()
                     return value[0] if value else None
                 elif isinstance(column, list):
                     # Если column - список, то выполняем запрос для всех столбцов из списка
                     select_columns = [getattr(AmoLeads, col) for col in column]
-                    result = await session.execute(select(*select_columns).where(AmoLeads.chat_id == chat_id))
+                    result = await session.execute(select(*select_columns).where(AmoLeads.chat_id == chat_id)) # noqa
                     values = result.fetchall()
                     return values[0] if values else None

@@ -56,7 +56,7 @@ class SurveyInitialCheck(BaseModel):
     )
 
     @field_validator("baby_age")
-    def parse_age(cls, value):  # noqa
+    def parse_age(cls, value): # noqa
         if isinstance(value, int):
             return value
         try:
@@ -101,8 +101,6 @@ class SurveyFullCheck(BaseModel):
 
     @field_validator("age")
     def parse_age(cls, value):  # noqa
-        if isinstance(value, int):
-            return value
         try:
             birthday = datetime.strptime(value, "%Y-%m-%d")
             return birthday

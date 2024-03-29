@@ -1,5 +1,3 @@
-import asyncio
-
 from sqlalchemy import select, update
 
 from src.orm.session import get_session
@@ -29,7 +27,7 @@ class AmoContactsCRUD:
                     "diagnosis": AmoContacts.diagnosis,
                     "segment": AmoContacts.segment,
                 }
-                await session.execute(update(AmoContacts).where(AmoContacts.contact_id == contact_id).values(
+                await session.execute(update(AmoContacts).where(AmoContacts.contact_id == contact_id).values( # noqa
                     {field_mappings[key]: value for key, value in update_columns.items()})
                 )
                 await session.commit()
@@ -42,7 +40,7 @@ class AmoContactsCRUD:
                 empty_fields = []
                 result = await session.execute(select(
                     AmoContacts.child_name, AmoContacts.child_birth_date, AmoContacts.city, AmoContacts.diagnosis,
-                    AmoContacts.doctor_enquiry).where(AmoContacts.contact_id == contact_id))
+                    AmoContacts.doctor_enquiry).where(AmoContacts.contact_id == contact_id)) # noqa
                 contact_values = result.fetchone()
                 field_names = ["child_name", "child_birth_date", "city", "diagnosis", "doctor_enquiry"]
                 field_values = dict(zip(field_names, contact_values))

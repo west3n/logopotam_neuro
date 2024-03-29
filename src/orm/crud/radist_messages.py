@@ -1,4 +1,3 @@
-import asyncio
 from datetime import datetime
 from sqlalchemy import select, update, and_, func
 from sqlalchemy.dialects.postgresql import insert
@@ -25,17 +24,21 @@ class RadistMessagesCRUD:
                 except ValueError:
                     send_time = datetime.strptime(send_time, '%Y-%m-%dT%H:%M:%S.%f')
             async with session.begin():
-                new_message_insert_stmt = insert(RadistMessages).values(
-                    message_id=data['event']['message']['message_id'],
-                    chat_id=data['event']['chat_id'],
-                    sender='robot' if data['event']['message']['direction'] == 'outbound' else 'user',
-                    text=data['event']['message']['text']['text'],
-                    send_time=send_time
-                ).on_conflict_do_nothing(
-                    index_elements=['message_id']
-                )
-                await session.execute(new_message_insert_stmt)
-                await session.commit()
+                try:
+                    new_message_insert_stmt = insert(RadistMessages).values(
+                        message_id=data['event']['message']['message_id'],
+                        chat_id=data['event']['chat_id'],
+                        sender='robot' if data['event']['message']['direction'] == 'outbound' else 'user',
+                        text=data['event']['message']['text']['text'],
+                        send_time=send_time
+                    ).on_conflict_do_nothing(
+                        index_elements=['message_id']
+                    )
+                    await session.execute(new_message_insert_stmt)
+                    await session.commit()
+                # Это исключение работает только в случае, если мы пытаемся сохранить картинку
+                except KeyError:
+                    pass
             async with session.begin():
                 result = await session.execute(
                     select(func.count()).where(and_(

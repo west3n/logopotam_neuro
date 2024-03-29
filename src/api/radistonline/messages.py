@@ -1,7 +1,4 @@
-import asyncio
-
 import aiohttp
-import decouple
 
 from src.core.config import settings, headers
 from src.api.radistonline.connect import RadistOnlineConnect

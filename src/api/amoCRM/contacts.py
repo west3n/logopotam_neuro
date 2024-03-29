@@ -26,7 +26,7 @@ class ContactFetcher:
         :return:
         """
         all_contacts = await ContactFetcher.get_all_contacts()
-        phone_numbers = [contact['custom_fields_values'][0]['values'][0]['value'] for contact in all_contacts if contact['id'] != contact_id]
+        phone_numbers = [contact['custom_fields_values'][0]['values'][0]['value'] for contact in all_contacts if contact['id'] != contact_id] # noqa
         return phone_number in phone_numbers
 
     @staticmethod
