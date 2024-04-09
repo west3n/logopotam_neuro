@@ -96,27 +96,14 @@ async def radist_data_processing(data):
                         await RadistMessagesCRUD.change_status(message_id, 'answered')
                 else:
                     # Если сообщение не является частью алгоритма, то отправляем его обученному ассистенту
-                    response = await Assistant.get_response(chat_id, messages_text)
-                    await RadistonlineMessages.send_message(chat_id=chat_id, text=response)
+                    await Assistant.get_response(
+                        chat_id=chat_id,
+                        contact_id=contact_id,
+                        lead_id=lead_id,
+                        user_prompt=messages_text,
+                        step=step
+                    )
 
-                    # Здесь мы дополнительно проверяем сообщение ассистента на предмет завершения диалога и
-                    # необходимости прикрепить картинку к отправленному сообщению
-                    is_dialog_finished, send_image = await DialogFinishChecker.check_dialog_finish(response)
-                    print("IS DIALOG FINISHED: ", is_dialog_finished)
-                    print("SEND IMAGE: ", send_image)
-                    if send_image:
-                        await RadistonlineMessages.send_image(chat_id, settings.ONLINE_ADVANTAGES_IMAGE_URL)
-
-                    if is_dialog_finished:
-                        # Если диалог завершён на позитивной ноте, но алгоритм не завершён,
-                        # необходимо отправить сообщение клиенту в зависимости от шага алгоритма
-                        if is_dialog_finished == 'positive' and step != "COMPLETED":
-                            print("positive but not completed")
-                            # TODO: написать логику отправки сообщения
-                        else:
-                            await LeadFetcher.change_lead_status(
-                                lead_id, "ТРЕБУЕТСЯ МЕНЕДЖЕР"
-                            )
         except TypeError:
             # Если данные не найдены, значит сообщение получено не от клиента, с которым мы общаемся
             pass

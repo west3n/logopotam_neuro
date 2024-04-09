@@ -11,7 +11,7 @@ from src.api.amoCRM.custom_fields import CustomFieldsFetcher
 from src.api.radistonline.messages import RadistonlineMessages
 from src.api.radistonline.chats import RadistOnlineChats
 
-from src.core.config import logger
+from src.core.config import logger, settings
 from src.core.texts import FirstStepTexts
 
 from src.dialog.steps.first.llm_instructor import SurveyInitialCheck
@@ -35,10 +35,9 @@ async def amo_data_processing(data):
         # Получаем ID новой сделки
         new_lead_id = data['leads[add][0][id]']
 
-        # Проверяем воронку на валидность
+        # Мы работаем только с воронкой "Логопотам"
         pipeline_id = int(data['leads[add][0][pipeline_id]'])
-        logopotam_pipeline_id = await PipelineFetcher.get_pipeline_id_by_name("Logopotam")
-        if pipeline_id == logopotam_pipeline_id:
+        if pipeline_id == settings.LOGOPOTAM_PIPELINE_ID:
 
             # Обработка получения новой задачи
             new_lead_data = await LeadFetcher.get_lead(lead_id=new_lead_id)
@@ -53,7 +52,7 @@ async def amo_data_processing(data):
             name = contact_name + '_' * (5 - len(contact_name)) if len(contact_name) < 5 else contact_name
 
             # Проверяем, существует ли уже номер телефона в базе контактов amoCRM
-            is_existed = await ContactFetcher.check_contact_already_exist_by_phone(contact_id, phone_number)
+            is_existed = await ContactFetcher.find_existing_phone_number(phone_number)
             if is_existed:
 
                 # Здесь мы просто меняем статус задачи, больше действий не требуется
@@ -75,11 +74,20 @@ async def amo_data_processing(data):
                 await AmoLeadsCRUD.change_lead_status(int(new_lead_id), int(new_status_id))
                 logger.info(f"Сохранили данные по новому лиду с ID {new_lead_id}")
 
-                # Засыпаем на 4 минуты, пока amoCRM занимается сборкой данных по клиенту
-                await asyncio.sleep(5)
-
-                # Теперь необходимо проверить, есть ли у клиента полностью заполненный опрос
-                survey_data = await CustomFieldsFetcher.get_survey_lead_fields(lead_id=new_lead_id)
+                # Если источник сделки 'partner' или 'Flocktory', то пропускаем ожидание сборки данных по анкете
+                utm_source = await CustomFieldsFetcher.get_survey_lead_fields(lead_id=new_lead_id)
+                if utm_source in ['partner', 'Flocktory']:
+                    survey_data = None
+                else:
+                    # Теперь необходимо проверить, есть ли у клиента полностью заполненный опрос, проверяя каждые 30
+                    # секунд пока он не заполнится или не пройдет 5 минут
+                    survey_data = await CustomFieldsFetcher.get_survey_lead_fields(lead_id=new_lead_id)
+                    timeout = 0
+                    while survey_data is None and timeout < 300:
+                        await asyncio.sleep(30)
+                        timeout += 30
+                        survey_data = await CustomFieldsFetcher.get_survey_lead_fields(lead_id=new_lead_id)
+                        continue
 
                 if survey_data:
 
@@ -195,7 +203,7 @@ async def amo_data_processing(data):
 
         # Пропускаем сделки из других воронок
         else:
-            logger.info(f"Сделка {new_lead_id} не относится к воронке Logopotam, пропускаем")
+            logger.info(f"Сделка {new_lead_id} не относится к воронке Логопотам, пропускаем")
 
     except KeyError:
         # Обработка смены статуса задачи c сохранением нового ID в базу данных

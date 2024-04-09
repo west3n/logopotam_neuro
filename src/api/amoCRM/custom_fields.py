@@ -1,3 +1,5 @@
+import asyncio
+
 import aiohttp
 
 from src.core.config import settings, headers
@@ -28,8 +30,43 @@ class CustomFieldsFetcher:
             async with session.get(url=url, headers=headers.AMO_HEADERS) as response:
                 response_json = await response.json()
                 fields_list = response_json['custom_fields_values']
-                fields_dict = {item['field_name']: item['values'][0]['value'] for item in fields_list} if fields_list else None # noqa
+                fields_dict = {item['field_name']: item['values'][0]['value'] for item in
+                               fields_list} if fields_list else None  # noqa
                 return fields_dict
+
+    @staticmethod
+    async def get_utm_source(lead_id: str):
+        """
+        Получение значения utm_source из анкеты в конкретной сделке
+        :param lead_id: ID сделки в строковом формате
+        :return: Значение utm_source в конкретной сделке
+        """
+        fields = await CustomFieldsFetcher.get_survey_lead_fields(lead_id)
+        try:
+            return fields['utm_source']
+        except KeyError:
+            return None
+
+    @staticmethod
+    async def get_child_data(lead_id: str):
+        """
+        Получение данных из анкеты в конкретной сделке
+        :param lead_id: ID сделки в строковом формате
+        :return: Словарь с данными из анкеты
+        """
+        fields = await CustomFieldsFetcher.get_survey_lead_fields(lead_id)
+        try:
+            child_data = {
+                'Имя ребёнка': fields['Имя ребёнка'],
+                'Дата рождения': fields['Дата рождения'],
+                'Страна/город': fields['Страна/город'],
+                'Подробнее о запросе': fields['Подробнее о запросе'],
+                'Диагноз (если есть)': fields['Диагноз (если есть)'],
+            }
+        except KeyError:
+            child_data = {}
+
+        return child_data
 
     @staticmethod
     async def save_survey_lead_fields(lead_id: int, child_data: dict):
@@ -62,7 +99,8 @@ class CustomFieldsFetcher:
 
                 if field_id is not None:
                     # Переводим datetime в строку, чтобы записать в amoCRM
-                    field_value = child_data[field] if field_name != 'Дата рождения' else child_data[field].strftime('%d-%m-%Y') # noqa
+                    field_value = child_data[field] if field_name != 'Дата рождения' else child_data[field].strftime(
+                        '%d-%m-%Y')  # noqa
                     data['custom_fields_values'].append({
                         'field_id': field_id,
                         'field_name': field_name,

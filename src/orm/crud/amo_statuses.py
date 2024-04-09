@@ -56,7 +56,7 @@ class AmoStatusesCRUD:
                 message_text = result[0] if result else None
 
                 result_status = await session.execute(
-                    select(AmoStatuses.status_id).where(AmoStatuses.name == status_name))
+                    select(AmoStatuses.status_id).where(AmoStatuses.name == status_name)) # noqa
                 result = result_status.fetchone()
                 status_id = result[0] if result else None
 

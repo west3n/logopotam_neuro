@@ -37,19 +37,14 @@ class MessageCategoryChecker(BaseModel):
         return message_text.algorythm_type, message_text.assistant_type
 
 
-class DialogFinishChecker(BaseModel):
-    dialog_finish_type: Optional[str] = Field(description=ObjectionsCheckerTexts.DIALOG_FINISH_DESCRIPTION)
-    send_image: bool = Field(description=ObjectionsCheckerTexts.SEND_IMAGE_DESCRIPTION)
-
-    @field_validator("dialog_finish_type")
-    def validate_dialog_finish_type(cls, value):  # noqa
-        return None if value not in ['positive', 'negative'] else value
+class SendImageChecker(BaseModel):
+    need_send_image: bool = Field(description=ObjectionsCheckerTexts.SEND_IMAGE_DESCRIPTION)
 
     @staticmethod
-    async def check_dialog_finish(message_text: str):
-        message_text: DialogFinishChecker = await instructor_async_client.chat.completions.create(
+    async def send_image(message_text: str):
+        message_text: SendImageChecker = await instructor_async_client.chat.completions.create(
             model="gpt-4-turbo-preview",
-            response_model=DialogFinishChecker,
+            response_model=SendImageChecker,
             max_retries=5,
             messages=[
                 {
@@ -58,4 +53,4 @@ class DialogFinishChecker(BaseModel):
                 },
             ],
         )
-        return message_text.dialog_finish_type, message_text.send_image
+        return message_text.send_image

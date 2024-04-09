@@ -13,6 +13,7 @@ class Settings:
     # amoCRM
     AMO_ACCESS_TOKEN: str = decouple.config("AMO_ACCESS_TOKEN")
     AMO_SUBDOMAIN_URL: str = decouple.config('AMO_SUBDOMAIN_URL')
+    LOGOPOTAM_PIPELINE_ID: int = int(decouple.config('LOGOPOTAM_PIPELINE_ID'))
 
     # radist.online
     RADIST_API_KEY: str = decouple.config('RADIST_API_KEY')
@@ -20,6 +21,10 @@ class Settings:
     RADIST_COMPANY_ID: str = decouple.config('RADIST_COMPANY_ID')
     ONLINE_ADVANTAGES_IMAGE_URL: str = decouple.config("ONLINE_ADVANTAGES_IMAGE_URL")
     ZOOM_IMAGE_URL: str = decouple.config("ZOOM_IMAGE_URL")
+
+    # bubulearn
+    BUBULEARN_API_KEY: str = decouple.config("BUBULEARN_API_KEY")
+    BUBULEARN_SUBDOMAIN_URL: str = decouple.config("BUBULEARN_SUBDOMAIN_URL")
 
     # SQLAlchemy
     SQLALCHEMY_DATABASE_URI: str = decouple.config("SQLALCHEMY_DATABASE_URI")
@@ -40,6 +45,9 @@ class Headers:
     RADIST_HEADERS: dict = {
         'X-Api-Key': f'{Settings.RADIST_API_KEY}',
         'Content-Type': 'application/json'
+    }
+    BUBULEARN_HEADERS: dict = {
+        'Authorization': f'Bearer {Settings.BUBULEARN_API_KEY}',
     }
 
 
