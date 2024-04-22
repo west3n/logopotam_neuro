@@ -1,13 +1,4 @@
-import asyncio
-
-from src.api.amoCRM.leads import LeadFetcher
-from src.api.radistonline.messages import RadistonlineMessages
-from src.core.config import logger, settings
-
-from src.dialog.objections.llm_instructor import MessageCategoryChecker, DialogFinishChecker
-from src.dialog.objections.assistant import Assistant
-from src.dialog.steps.first.handlers import step_1_0_handler, step_1_1_handler
-from src.dialog.steps.second.handlers import step_2_0_handler
+from src.dialog.objections.assistant import Assistant, RegistrationAssistant
 
 from src.orm.crud.amo_leads import AmoLeadsCRUD
 from src.orm.crud.amo_statuses import AmoStatusesCRUD
@@ -26,82 +17,26 @@ async def radist_data_processing(data):
             contact_id, lead_id, status_id = await AmoLeadsCRUD.get_value_by_chat_id(
                 chat_id, ['contact_id', 'lead_id', 'status_id']
             )
-
-            # Получаем ID статуса "СТАРТ НЕЙРО" и получаем текст последнего сообщения от ассистента в чате
-            start_neuro_status_id, robot_message_text = await AmoStatusesCRUD.get_status_id_and_last_robot_message(
-                "СТАРТ НЕЙРО", chat_id
-            )
+            # Получаем ID статуса "СТАРТ НЕЙРО"
+            neuro_status_id = await AmoStatusesCRUD.get_neuro_status_id("СТАРТ НЕЙРО")
             # Сравниваем ID статуса "СТАРТ НЕЙРО" со статусом пользователя
-            if status_id == start_neuro_status_id:
-
+            if status_id == neuro_status_id:
                 # Первым делом нам нужно получить шаг алгоритма и жалобы от пользователя
-                step, complain_step = await ChatStepsCRUD.get_step_and_complain_step(chat_id)
-                print("STEP: ", step)
-                print("COMPLAIN STEP: ", complain_step)
-
-                # Если мы на втором шаге в алгоритме, то добавляем последнее сообщение
+                step = await ChatStepsCRUD.get_step(chat_id)
+                # Если мы на шаге 2.0 или 3.1 в алгоритме, то добавляем последнее сообщение
                 # от ассистента для более точного распознавания LLM-инструктором
-                messages_text = robot_message_text + "\n" + messages_text if step == '2.0' else messages_text
-                print("MESSAGE TEXT: ", messages_text)
-                # Проверяем категорию сообщения для распределения задачи ассистенту
-                algorythm, assistant = await MessageCategoryChecker.check_message_for_objection(messages_text)
-                print("ALGORYTHM: ", algorythm)
-                print("ASSISTANT: ", assistant)
-
-                # Если инструктор не распознал ни одну из категорий сообщения, то добавляем последнее сообщение от
-                # ассистента и пробуем снова
-                if not algorythm and not assistant:
-                    messages_text = robot_message_text + "\n" + messages_text
-                    algorythm, assistant = await MessageCategoryChecker.check_message_for_objection(messages_text)
-                    print("ALGORYTHM: ", algorythm)
-                    print("ASSISTANT: ", assistant)
-
-                # Если в тексте сообщения есть одна из категорий алгоритма, то задача распределяется в алгоритм
-                if algorythm and algorythm in ['name', 'city', 'birthday', 'problem', 'diagnosis', 'zoom']:
-                    if step == '1.1':
-                        len_messages = await RadistMessagesCRUD.save_new_message(data)
-
-                        # Здесь мы отправляемся в небольшую спячку на случай, если клиент отправит несколько сообщений
-                        # подряд
-                        await asyncio.sleep(15 * len_messages)
-
-                        # Теперь нам нужно получить ID и текст всех неотвеченных сообщений из этого чата
-                        all_unanswered_messages = await RadistMessagesCRUD.get_all_unanswered_messages(chat_id)
-                        if all_unanswered_messages:
-                            messages_ids = [message[0] for message in all_unanswered_messages]
-                            messages_text = '\n'.join([message[1] for message in all_unanswered_messages])
-
-                            # Меняем статус у всех сообщений на processing, чтобы не использовать их в других процессах
-                            # и отправляем его в функцию для обработки шага 1.1
-                            for message_id in messages_ids:
-                                await RadistMessagesCRUD.change_status(message_id, 'processing')
-                            await step_1_1_handler(messages_text, contact_id, chat_id, lead_id)
-
-                            # Меняем статус у всех сообщений на answered после завершения процесса
-                            for message_id in messages_ids:
-                                await RadistMessagesCRUD.change_status(message_id, 'answered')
-
-                    # В остальных шагах логика одинаковая
-                    handlers = {
-                        '1.0': step_1_0_handler,
-                        '2.0': step_2_0_handler
-                    }
-
-                    if step in handlers:
-                        # Меняем статус у всех сообщений на processing, чтобы не использовать их в других процессах
-                        await RadistMessagesCRUD.change_status(message_id, 'processing')
-                        await handlers[step](messages_text, chat_id, lead_id)
-
-                        # Меняем статус у всех сообщений на answered после завершения процесса
-                        await RadistMessagesCRUD.change_status(message_id, 'answered')
-                else:
-                    # Если сообщение не является частью алгоритма, то отправляем его обученному ассистенту
+                if step == 'survey':
                     await Assistant.get_response(
                         chat_id=chat_id,
-                        contact_id=contact_id,
                         lead_id=lead_id,
-                        user_prompt=messages_text,
-                        step=step
+                        contact_id=contact_id,
+                        user_prompt=messages_text
+                    )
+                else:
+                    await RegistrationAssistant.get_response(
+                        chat_id=chat_id,
+                        lead_id=lead_id,
+                        user_prompt=messages_text
                     )
 
         except TypeError:

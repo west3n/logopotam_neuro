@@ -1,3 +1,6 @@
+import asyncio
+from typing import List
+
 from sqlalchemy import select, and_
 from sqlalchemy.dialects.postgresql import insert
 
@@ -36,28 +39,22 @@ class AmoStatusesCRUD:
                 await session.commit()
 
     @staticmethod
-    async def get_status_id_and_last_robot_message(status_name: str, chat_id: int):
+    async def get_neuro_status_id(status_name: str):
         """
-        Здесь мы получаем ID статуса по его имени
-        :param chat_id: ID чата пользователя
-        :param status_name: Имя статуса
-        :return: ID статуса
+        Get ID of a status based on its name
+        :param status_name: Name of the status
+        :return: Status ID
         """
         async_session = await get_session()
         async with async_session() as session:
             async with session.begin():
-                # Get last robot message text
-                result_message = await session.execute(
-                    select(RadistMessages.text).where(
-                        and_(RadistMessages.chat_id == chat_id, RadistMessages.sender == 'robot'))
-                    .order_by(RadistMessages.send_time.desc()).limit(1)
-                )
-                result = result_message.fetchone()
-                message_text = result[0] if result else None
+                result = await session.execute(
+                    select(AmoStatuses.status_id)
+                    .where(AmoStatuses.name == status_name))  # noqa
+                status_id = result.scalar()
 
-                result_status = await session.execute(
-                    select(AmoStatuses.status_id).where(AmoStatuses.name == status_name)) # noqa
-                result = result_status.fetchone()
-                status_id = result[0] if result else None
+                return status_id
 
-                return status_id, message_text
+
+if __name__ == '__main__':
+    asyncio.run(AmoStatusesCRUD.create_all_statuses())

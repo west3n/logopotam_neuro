@@ -1,25 +1,21 @@
 import asyncio
-import uuid
-
-from datetime import datetime
-from werkzeug.datastructures import ImmutableMultiDict
 
 from src.api.amoCRM.leads import LeadFetcher
 from src.api.amoCRM.contacts import ContactFetcher
 from src.api.amoCRM.pipelines import PipelineFetcher
 from src.api.amoCRM.custom_fields import CustomFieldsFetcher
-from src.api.radistonline.messages import RadistonlineMessages
 from src.api.radistonline.chats import RadistOnlineChats
 
 from src.core.config import logger, settings
-from src.core.texts import FirstStepTexts
 
-from src.dialog.steps.first.llm_instructor import SurveyInitialCheck
+from src.dialog.objections.assistant import Assistant
+from src.dialog.objections.llm_instructor import SurveyInitialCheck
 
 from src.orm.crud.amo_leads import AmoLeadsCRUD
-from src.orm.crud.radist_messages import RadistMessagesCRUD
 from src.orm.crud.radist_chats import ChatStepsCRUD
 from src.orm.crud.amo_contacts import AmoContactsCRUD
+
+from werkzeug.datastructures import ImmutableMultiDict
 
 
 async def amo_data_processing(data):
@@ -34,7 +30,6 @@ async def amo_data_processing(data):
     try:
         # Получаем ID новой сделки
         new_lead_id = data['leads[add][0][id]']
-
         # Мы работаем только с воронкой "Логопотам"
         pipeline_id = int(data['leads[add][0][pipeline_id]'])
         if pipeline_id == settings.LOGOPOTAM_PIPELINE_ID:
@@ -53,6 +48,7 @@ async def amo_data_processing(data):
 
             # Проверяем, существует ли уже номер телефона в базе контактов amoCRM
             is_existed = await ContactFetcher.find_existing_phone_number(phone_number)
+
             if is_existed:
 
                 # Здесь мы просто меняем статус задачи, больше действий не требуется
@@ -83,9 +79,9 @@ async def amo_data_processing(data):
                     # секунд пока он не заполнится или не пройдет 5 минут
                     survey_data = await CustomFieldsFetcher.get_survey_lead_fields(lead_id=new_lead_id)
                     timeout = 0
-                    while survey_data is None and timeout < 300:
-                        await asyncio.sleep(30)
-                        timeout += 30
+                    while survey_data is None and timeout < 3:
+                        await asyncio.sleep(3)
+                        timeout += 3
                         survey_data = await CustomFieldsFetcher.get_survey_lead_fields(lead_id=new_lead_id)
                         continue
 
@@ -120,8 +116,8 @@ async def amo_data_processing(data):
                         )
                         # Сбор данных о ребенке для БД
                         child_info = {
-                            "city": survey_data["Имя ребёнка"],
-                            "child_name": survey_data["Дата рождения"],
+                            "city": survey_data["Страна/город"],
+                            "child_name": survey_data["Имя ребёнка"],
                             "child_birth_date": survey_data["Дата рождения"],
                             "doctor_enquiry": survey_data["Подробнее о запросе"],
                             "diagnosis": survey_data['Диагноз (если есть)'],
@@ -131,35 +127,17 @@ async def amo_data_processing(data):
                         await AmoContactsCRUD.update_contact_values(contact_id=contact_id,
                                                                     update_columns=child_info)
 
-                        # Получаем текст первого сообщения и отправляем его в указанный chat_id
-                        first_message_text = FirstStepTexts.return_first_message_text(
-                            is_survey=True,
-                            diagnosis=survey_data['Подробнее о запросе']
-                        )
-                        await RadistonlineMessages.send_message(
+                        # Здесь первый ассистент начинает работу с заполненного опроса
+                        await Assistant.get_response(
                             chat_id=chat_id,
-                            text=first_message_text
+                            lead_id=new_lead_id,
+                            contact_id=contact_id,
+                            user_prompt=str(survey_data)
                         )
-                        # Сохраняем отправленное сообщение в БД
-                        data = {
-                            "event": {
-                                "chat_id": chat_id,
-                                "message": {
-                                    "message_id": str(uuid.uuid4()),
-                                    "direction": "outbound",
-                                    "created_at": datetime.now().strftime('%Y-%m-%dT%H:%M:%S.%f%z'),
-                                    "text": {
-                                        "text": first_message_text
-                                    }
-                                },
-                            }
-                        }
-                        await RadistMessagesCRUD.save_new_message(data)
                         logger.info(f"Отправили и сохранили первое сообщение в сделке с ID {new_lead_id}")
 
-                        # Переводим пользователя в шаг 1.0, в котором ему нужно просто ответить Да или Нет.
-                        await ChatStepsCRUD.update(chat_id=chat_id, step="1.0")
-
+                        # Переводим пользователя в шаг survey, в котором ассистент отвечает за заполнение опроса.
+                        await ChatStepsCRUD.update(chat_id=chat_id, step="survey")
                 else:
                     # Здесь мы создаём новый чат в Radist.Online и начинаем диалог с сообщения при незаполненном опросе
                     _, chat_id = await RadistOnlineChats.create_new_chat(
@@ -173,33 +151,17 @@ async def amo_data_processing(data):
                         chat_id=int(chat_id) if isinstance(chat_id, str) else chat_id
                     )
 
-                    # Получаем текст первого сообщения и отправляем его в указанный chat_id
-                    first_message_text = FirstStepTexts.return_first_message_text(
-                        is_survey=False
-                    )
-                    await RadistonlineMessages.send_message(
+                    # Здесь первый ассистент начинает работу с незаполненного опроса
+                    await Assistant.get_response(
                         chat_id=chat_id,
-                        text=first_message_text
+                        lead_id=new_lead_id,
+                        contact_id=contact_id,
+                        user_prompt="Нет данных"
                     )
-                    # Сохраняем отправленное сообщение в БД
-                    data = {
-                        "event": {
-                            "chat_id": chat_id,
-                            "message": {
-                                "message_id": str(uuid.uuid4()),
-                                "direction": "outbound",
-                                "created_at": datetime.now().strftime('%Y-%m-%dT%H:%M:%S.%f%z'),
-                                "text": {
-                                    "text": first_message_text
-                                }
-                            },
-                        }
-                    }
-                    await RadistMessagesCRUD.save_new_message(data)
                     logger.info(f"Отправили и сохранили первое сообщение в незаполненной сделке с ID {new_lead_id}")
 
-                    # Сохраняем шаг в диалоге у конкретной сделки
-                    await ChatStepsCRUD.update(chat_id=chat_id, step="1.1")
+                    # Переводим пользователя в шаг survey, в котором ассистент отвечает за заполнение опроса.
+                    await ChatStepsCRUD.update(chat_id=chat_id, step="survey")
 
         # Пропускаем сделки из других воронок
         else:

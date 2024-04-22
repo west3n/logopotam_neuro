@@ -1,5 +1,3 @@
-import asyncio
-
 import aiohttp
 
 from src.core.config import settings, headers
@@ -82,8 +80,3 @@ class PipelineFetcher:
         statuses_dict = await PipelineFetcher.get_pipeline_statuses()
         _, status_name = statuses_dict.get(status_id)
         return status_name
-
-
-if __name__ == '__main__':
-    pipelines = asyncio.run(PipelineFetcher.get_pipeline_id_by_name('Логопотам'))
-    print(pipelines)

@@ -5,15 +5,13 @@
 
 from quart import Quart, request, jsonify
 
-from src.core.config import logger
-
 from dialog.distributors.amo_distributor import amo_data_processing
 from dialog.distributors.radist_distributor import radist_data_processing
 
 app = Quart(__name__)
 
 
-# Здесь отлавливаются события из Radist.Online (входящие / исходящие сообщения и смена статусов сообщений)
+# Здесь отлавливаются события из Radist.Online (входящие / исходящие сообщения)
 @app.route('/radist', methods=['POST'])
 async def radist():
     """
@@ -25,7 +23,6 @@ async def radist():
 
     # Отправляем задачу в фоновый процесс - распределитель и сразу отдаём ответ 200
     app.add_background_task(radist_data_processing, data)
-    logger.info(f"Получили новое событие из Radist.Online с данными: {str(data)}")
     return jsonify(''), 200
 
 
@@ -41,7 +38,6 @@ async def amocrm():
 
     # Отправляем задачу в фоновый процесс - распределитель и сразу отдаём ответ 200
     app.add_background_task(amo_data_processing, data)
-    logger.info(f"Получили новое событие из amoCRM с данными: {str(data)}")
     return jsonify(''), 200
 
 

@@ -1,7 +1,5 @@
-import asyncio
 import aiohttp
 
-from src.api.amoCRM.contacts import ContactFetcher
 from src.api.amoCRM.pipelines import PipelineFetcher
 from src.core.config import settings, headers
 

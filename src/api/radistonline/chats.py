@@ -6,17 +6,6 @@ from src.api.radistonline.contacts import RadistOnlineContacts
 
 
 class RadistOnlineChats:
-    @staticmethod
-    async def get_all_chats():
-        """
-        Получение всех чатов
-        :return: Список всех чатов, каждый чат в формате JSON
-        """
-        url = settings.RADIST_SUBDOMAIN_URL + 'messaging/chats/with_contacts/'
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url=url, headers=headers.RADIST_HEADERS) as response:
-                response_json = await response.json()
-                return response_json["data"]
 
     @staticmethod
     async def create_new_chat(name: str, phone: str):

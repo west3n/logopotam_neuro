@@ -1,4 +1,3 @@
-import asyncio
 import aiohttp
 
 from src.core.config import settings, headers
@@ -26,14 +25,19 @@ class ContactFetcher:
         :param phone_number: Номер нового контакта
         """
         encoded_phone = quote(phone_number, safe='')
-        url = settings.AMO_SUBDOMAIN_URL + f'api/v4/contacts?filter[custom_fields_values][453541][]={encoded_phone}'
+        field_id = settings.PHONE_NUMBER_FIELD_ID
+        url = settings.AMO_SUBDOMAIN_URL + f'api/v4/contacts?filter[custom_fields_values][{field_id}][]={encoded_phone}'
         async with aiohttp.ClientSession() as session:
             async with session.get(url=url, headers=headers.AMO_HEADERS) as response:
                 try:
                     response_json = await response.json()
-                except aiohttp.ContentTypeError:
+                    if response_json['title'] == 'Bad Request':
+                        return False
+                except KeyError:
+                    contacts = response_json['_embedded']['contacts']
+                    return True if len(contacts) > 1 else False
+                except (aiohttp.ContentTypeError, KeyError):
                     return False
-                return response_json is not None
 
     @staticmethod
     async def get_contact_by_id(contact_id: str):
@@ -47,11 +51,3 @@ class ContactFetcher:
         async with aiohttp.ClientSession() as session:
             async with session.get(url=url, headers=headers.AMO_HEADERS) as response:
                 return await response.json()
-
-
-if __name__ == '__main__':
-    # contacts = asyncio.run(ContactFetcher.get_all_contacts())
-    # print(contacts)
-
-    is_contact_exist = asyncio.run(ContactFetcher.find_existing_phone_number("+7 (918) 892-1817"))
-    print(is_contact_exist)

@@ -1,3 +1,5 @@
+import asyncio
+
 from sqlalchemy.dialects.postgresql import insert
 
 from src.orm.session import get_session

@@ -1,23 +1,44 @@
-import asyncio
-
 import aiohttp
+
+from datetime import datetime, timedelta
 
 from src.core.config import settings, headers
 
 
-class BubulearnSlotsFetcher:
+def normalize_date(date: str):
+    # Преобразование даты в удобный для ассистента формат
+    new_datetime = (datetime.fromisoformat(date.replace('Z', '+00:00')))
+    new_datetime_str = new_datetime.strftime("%d.%m.%Y %H:%M")
+    day_of_week = new_datetime.strftime("%A")
+    weekdays = {
+        'Monday': '(Понедельник)',
+        'Tuesday': '(Вторник)',
+        'Wednesday': '(Среда)',
+        'Thursday': '(Четверг)',
+        'Friday': '(Пятница)',
+        'Saturday': '(Суббота)',
+        'Sunday': '(Воскресенье)'
+    }
+    new_datetime_str_with_day = f"{new_datetime_str} {weekdays[day_of_week]}"
+    return new_datetime_str_with_day
 
+
+class BubulearnSlotsFetcher:
     @staticmethod
-    async def get_slots():
+    async def get_slots(slot_id: str = None):
         """
         Запрос на получение слотов
-        :return: Список слотов
+        :return: Список слотов в строковой форме для ассистента
         """
         url = settings.BUBULEARN_SUBDOMAIN_URL + 'slots/'
         async with aiohttp.ClientSession() as session:
             async with session.get(url=url, headers=headers.BUBULEARN_HEADERS) as response:
                 data = await response.json()
-                return data['slots']
+                slots = [{'slot_id': slot['slot_id'], 'date': normalize_date(slot['start'])} for slot in data['slots']]
+                if slot_id:
+                    date = next((slot['date'] for slot in slots if slot['slot_id'] == slot_id), None)
+                    return date
+                return str(slots)
 
     @staticmethod
     async def add_diagnostic(slot_id: str, request: str, lead_id: int, phone: str, student_name: str,
@@ -41,9 +62,3 @@ class BubulearnSlotsFetcher:
         async with aiohttp.ClientSession() as session:
             async with session.post(url=url, headers=headers.BUBULEARN_HEADERS, json=data) as response:
                 return True if response.status == 200 else False
-
-
-if __name__ == '__main__':
-    slots = asyncio.run(BubulearnSlotsFetcher.get_slots())
-    for slot in slots:
-        print(slot)

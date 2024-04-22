@@ -14,6 +14,7 @@ class Settings:
     AMO_ACCESS_TOKEN: str = decouple.config("AMO_ACCESS_TOKEN")
     AMO_SUBDOMAIN_URL: str = decouple.config('AMO_SUBDOMAIN_URL')
     LOGOPOTAM_PIPELINE_ID: int = int(decouple.config('LOGOPOTAM_PIPELINE_ID'))
+    PHONE_NUMBER_FIELD_ID: int = int(decouple.config('PHONE_NUMBER_FIELD_ID'))
 
     # radist.online
     RADIST_API_KEY: str = decouple.config('RADIST_API_KEY')
@@ -31,7 +32,8 @@ class Settings:
 
     # OpenAI
     OPENAI_API_KEY: str = decouple.config("OPENAI_API_KEY")
-    OPENAI_ASSISTANT_ID = decouple.config("OPENAI_ASSISTANT_ID")
+    OPENAI_ASSISTANT_ID: str = decouple.config("OPENAI_ASSISTANT_ID")
+    OPENAI_REGISTRATION_ASSISTANT_ID: str = decouple.config("OPENAI_REGISTRATION_ASSISTANT_ID")
 
 
 class Headers:
