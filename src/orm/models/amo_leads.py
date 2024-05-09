@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, ForeignKey
+from sqlalchemy import Column, Integer, ForeignKey, String, Boolean
 
 from src.orm.models.amo_pipelines import AmoPipelines
 from src.orm.models.amo_statuses import AmoStatuses
@@ -19,3 +19,5 @@ class AmoLeads(BaseModel):
     status_id = Column("status_id", Integer, ForeignKey(AmoStatuses.status_id)) # noqa
     contact_id = Column("contact_id", Integer, ForeignKey(AmoContacts.contact_id)) # noqa
     chat_id = Column("chat_id", Integer, ForeignKey(RadistChats.chat_id)) # noqa
+    lead_name = Column("lead_name", String(255))
+    is_renamed = Column("is_renamed", Boolean, default=False)

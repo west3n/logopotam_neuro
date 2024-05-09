@@ -22,6 +22,7 @@ class Settings:
     RADIST_COMPANY_ID: str = decouple.config('RADIST_COMPANY_ID')
     ONLINE_ADVANTAGES_IMAGE_URL: str = decouple.config("ONLINE_ADVANTAGES_IMAGE_URL")
     ZOOM_IMAGE_URL: str = decouple.config("ZOOM_IMAGE_URL")
+    CONNECTION_ID: int = int(decouple.config("CONNECTION_ID"))
 
     # bubulearn
     BUBULEARN_API_KEY: str = decouple.config("BUBULEARN_API_KEY")

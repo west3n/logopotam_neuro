@@ -54,7 +54,3 @@ class AmoStatusesCRUD:
                 status_id = result.scalar()
 
                 return status_id
-
-
-if __name__ == '__main__':
-    asyncio.run(AmoStatusesCRUD.create_all_statuses())

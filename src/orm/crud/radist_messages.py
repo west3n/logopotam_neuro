@@ -1,4 +1,9 @@
-from datetime import datetime
+import asyncio
+import pytz
+
+from datetime import datetime, timedelta
+from typing import List
+
 from sqlalchemy import select, update, and_, func
 from sqlalchemy.dialects.postgresql import insert
 
@@ -36,18 +41,9 @@ class RadistMessagesCRUD:
                     )
                     await session.execute(new_message_insert_stmt)
                     await session.commit()
-                # Это исключение работает только в случае, если мы пытаемся сохранить картинку
+                # This exception only works if we are trying to save an image
                 except KeyError:
                     pass
-            async with session.begin():
-                result = await session.execute(
-                    select(func.count()).where(and_(
-                        RadistMessages.chat_id == data['event']['chat_id'], RadistMessages.status == 'unanswered',
-                        RadistMessages.sender != 'robot'
-                    ))
-                )
-                count = result.scalar()
-            return count
 
     @staticmethod
     async def get_all_unanswered_messages(chat_id: int):
@@ -55,23 +51,49 @@ class RadistMessagesCRUD:
         async with async_session() as session:
             async with session.begin():
                 result = await session.execute(
-                    select(RadistMessages.message_id, RadistMessages.text).where(
-                        and_(RadistMessages.chat_id == chat_id, RadistMessages.status == 'unanswered',
-                             RadistMessages.sender != 'robot'
-                             )
-                    )
+                    select(RadistMessages.message_id, RadistMessages.text)
+                    .where(and_(
+                        RadistMessages.chat_id == chat_id,
+                        RadistMessages.status == 'unanswered',
+                        RadistMessages.sender != 'robot'
+                    ))
                 )
                 messages = result.fetchall()
-                return messages
+            return messages
 
     @staticmethod
-    async def change_status(message_id: str, new_status: str):
+    async def change_status(message_ids: List[str], new_status: str):
         """
-        Асинхронная функция для изменения статуса сообщения
+        Изменяем статус сообщений
         """
         async_session = await get_session()
         async with async_session() as session:
             async with session.begin():
-                stmt = (update(RadistMessages).where(RadistMessages.message_id == message_id).values(status=new_status)) # noqa
+                stmt = (update(RadistMessages).where(RadistMessages.message_id.in_(message_ids)).values(
+                    status=new_status))
                 await session.execute(stmt)
                 await session.commit()
+
+    @staticmethod
+    async def is_last_robot_message_old(chat_id: int):
+        async_session = await get_session()
+        async with async_session() as session:
+            async with session.begin():
+                result = await session.execute(
+                    select(RadistMessages.send_time)
+                    .where(and_(
+                        RadistMessages.chat_id == chat_id,
+                        RadistMessages.sender == 'robot'
+                    ))
+                    .order_by(RadistMessages.send_time.desc())
+                    .limit(1)
+                )
+                last_message_time = result.scalar_one_or_none()
+
+                if last_message_time:
+                    current_time = datetime.now()
+                    time_difference = current_time - last_message_time
+
+                    if time_difference > timedelta(hours=1):
+                        return True
+        return False

@@ -1,3 +1,5 @@
+import asyncio
+
 import aiohttp
 
 from src.api.amoCRM.pipelines import PipelineFetcher

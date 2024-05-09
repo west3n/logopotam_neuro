@@ -1,8 +1,9 @@
+import asyncio
+
 import aiohttp
 
 from src.core.config import settings, headers
-from src.api.radistonline.connect import RadistOnlineConnect
-
+from src.api.radistonline.chats import RadistOnlineChats
 
 class RadistonlineMessages:
     @staticmethod
@@ -15,8 +16,9 @@ class RadistonlineMessages:
         :return: Текст, сообщающий об успешной отправке сообщения (или кода с текстом ошибки)
         """
         url = settings.RADIST_SUBDOMAIN_URL + 'messaging/messages/'
+        connection_id = settings.CONNECTION_ID
         data = {
-            "connection_id": await RadistOnlineConnect.get_connection_id(),
+            "connection_id": connection_id,
             "chat_id": chat_id,
             "mode": "async",
             "message_type": "text",
@@ -42,8 +44,9 @@ class RadistonlineMessages:
         :return: Текст, сообщающий об успешной отправке сообщения (или кода с текстом ошибки)
         """
         url = settings.RADIST_SUBDOMAIN_URL + 'messaging/messages/'
+        connection_id = settings.CONNECTION_ID
         data = {
-            "connection_id": await RadistOnlineConnect.get_connection_id(),
+            "connection_id": connection_id,
             "chat_id": chat_id,
             "mode": "async",
             "message_type": "image",

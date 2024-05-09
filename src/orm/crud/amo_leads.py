@@ -1,6 +1,7 @@
+import asyncio
 from typing import Union, List
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from src.orm.session import get_session
@@ -16,24 +17,26 @@ class AmoLeadsCRUD:
     """
 
     @staticmethod
-    async def save_new_lead(lead_data, contact_data):
+    async def save_new_lead(lead_data, contact_data, phone_number):
         """
         Сохраняем новую сделку, получив необходимые данные из переданных словарей
+        :param phone_number: Номер телефона новой сделки
         :param lead_data: dict с данными о новой сделке
         :param contact_data: dict с данными о контакте новой сделки
         """
         lead_id = lead_data['id']
+        lead_name = lead_data['name']
         pipeline_id = lead_data['pipeline_id']
         status_id = lead_data['status_id']
         contact_id = contact_data['id']
         contact_name = contact_data['name']
-        contact_phone_number = contact_data['custom_fields_values'][0]['values'][0]['value']
 
         async_session = await get_session()
         async with async_session() as session:
             async with session.begin():
                 lead_insert_stmt = insert(AmoLeads).values(
                     lead_id=lead_id,
+                    lead_name=lead_name,
                     pipeline_id=pipeline_id,
                     status_id=status_id,
                     contact_id=contact_id
@@ -41,7 +44,7 @@ class AmoLeadsCRUD:
                 contact_insert_stmt = insert(AmoContacts).values(
                     contact_id=contact_id,
                     name=contact_name,
-                    phone=contact_phone_number
+                    phone=phone_number
                 )
                 contact_do_nothing_stmt = contact_insert_stmt.on_conflict_do_nothing(
                     index_elements=['contact_id']
@@ -51,18 +54,24 @@ class AmoLeadsCRUD:
             await session.commit()
 
     @staticmethod
-    async def get_lead_by_id(lead_id: int):
+    async def get_lead_by_id(lead_id: int, renamed: bool = False):
         """
         Проверка наличия сделки в БД
+        :param renamed: True, если нужен поиск по ID сделки с еще не переименованными контактами
         :param lead_id: ID сделки
         :return: True/False в зависимости от наличия/отсутствия сделки
         """
         async_session = await get_session()
         async with async_session() as session:
             async with session.begin():
-                result = await session.execute(select(AmoLeads).where(AmoLeads.lead_id == lead_id)) # noqa
-                lead = result.fetchone()
-                return lead is not None
+                if not renamed:
+                    result = await session.execute(select(AmoLeads).where(AmoLeads.lead_id == lead_id))  # noqa
+                else:
+                    result = await session.execute(
+                        select(AmoLeads).where(AmoLeads.lead_id == lead_id).filter(AmoLeads.is_renamed == False)
+                    )  # noqa
+                lead: AmoLeads = result.fetchone()
+                return lead[0].lead_name if lead else None
 
     @staticmethod
     async def save_new_chat_id(lead_id: int, chat_id: int):
@@ -125,3 +134,19 @@ class AmoLeadsCRUD:
                     result = await session.execute(select(*select_columns).where(AmoLeads.chat_id == chat_id)) # noqa
                     values = result.fetchall()
                     return values[0] if values else None
+
+    @staticmethod
+    async def change_renamed_status(lead_id: int):
+        """
+        Здесь мы меняем статус сделки в БД
+        :param lead_id: ID сделки
+        """
+        async_session = await get_session()
+        async with async_session() as session:
+            async with session.begin():
+                await session.execute(
+                    update(AmoLeads).where(AmoLeads.lead_id == lead_id).values(
+                        is_renamed=True
+                    )
+                )
+            await session.commit()

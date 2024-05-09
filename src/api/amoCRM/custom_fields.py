@@ -1,3 +1,5 @@
+import asyncio
+
 import aiohttp
 
 from src.core.config import settings, headers
@@ -62,7 +64,7 @@ class CustomFieldsFetcher:
                 'Диагноз (если есть)': fields['Диагноз (если есть)'],
             }
         except KeyError:
-            child_data = {}
+            child_data = None
 
         return child_data
 

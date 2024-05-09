@@ -1,12 +1,14 @@
 import ast
+import asyncio
 
 from instructor import llm_validator
 from datetime import datetime
 from typing import Optional, Annotated
 from pydantic import BaseModel, Field, field_validator, BeforeValidator
 
+from src.api.bubulearn.slots import BubulearnSlotsFetcher
 from src.core.config import openai_clients
-from src.core.texts import ObjectionsCheckerTexts, SurveyInitialCheckTexts
+from src.core.texts import ObjectionsCheckerTexts, SurveyInitialCheckTexts, SlotsTexts
 
 instructor_client = openai_clients.OPENAI_INSTRUCTOR_CLIENT
 instructor_async_client = openai_clients.OPENAI_ASYNC_INSTRUCTOR_CLIENT
@@ -37,44 +39,6 @@ class JSONChecker(BaseModel):
             ],
         )
         return message_text.json_dict
-
-
-class SendImageChecker(BaseModel):
-    need_send_image: bool = Field(description=ObjectionsCheckerTexts.SEND_IMAGE_DESCRIPTION)
-
-    @staticmethod
-    async def send_image(message_text: str):
-        message_text: SendImageChecker = await instructor_async_client.chat.completions.create(
-            model="gpt-4-turbo-preview",
-            response_model=SendImageChecker,
-            max_retries=5,
-            messages=[
-                {
-                    "role": "user",
-                    "content": message_text
-                },
-            ],
-        )
-        return message_text.need_send_image
-
-
-class SendZoomImageChecker(BaseModel):
-    need_send_zoom_image: bool = Field(description=ObjectionsCheckerTexts.SEND_ZOOM_IMAGE_DESCRIPTION)
-
-    @staticmethod
-    async def send_zoom_image(message_text: str):
-        message_text: SendZoomImageChecker = await instructor_async_client.chat.completions.create(
-            model="gpt-4-turbo-preview",
-            response_model=SendZoomImageChecker,
-            max_retries=5,
-            messages=[
-                {
-                    "role": "user",
-                    "content": message_text
-                },
-            ],
-        )
-        return message_text.need_send_zoom_image
 
 
 class SurveyInitialCheck(BaseModel):
@@ -131,7 +95,7 @@ class SurveyInitialCheck(BaseModel):
 
 class GetSlotId(BaseModel):
     """Инструктор нужен для получения ID слота из сообщения ассистента"""
-    slot_id: str = Field(description="получи из текста ID слота")
+    slot_id: str = Field(description=asyncio.run(SlotsTexts.slot_validation_text()))
 
     @staticmethod
     async def get_slot_id(message_text: str):

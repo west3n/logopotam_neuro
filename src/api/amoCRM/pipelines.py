@@ -1,3 +1,5 @@
+import asyncio
+
 import aiohttp
 
 from src.core.config import settings, headers
@@ -27,20 +29,15 @@ class PipelineFetcher:
 
         :return: Словарь, содержащий информацию о статусах в воронке в формате {id: name}
         """
-        pipelines = await PipelineFetcher.get_pipelines()
-        pipeline_ids = [pipeline['id'] for pipeline in pipelines]
+        pipeline_id = settings.LOGOPOTAM_PIPELINE_ID
         statuses_dict = {}
-        for pipeline_id in pipeline_ids:
-            url = settings.AMO_SUBDOMAIN_URL + f'/api/v4/leads/pipelines/{pipeline_id}/statuses'
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url=url, headers=headers.AMO_HEADERS) as response:
-                    if response.status == 200:
-                        statuses = await response.json()
-                        for status in statuses['_embedded']['statuses']:
-                            statuses_dict[status['id']] = (pipeline_id, status['name'])
-                        return statuses_dict
-                    else:
-                        return await response.json()
+        url = settings.AMO_SUBDOMAIN_URL + f'/api/v4/leads/pipelines/{pipeline_id}/statuses'
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url=url, headers=headers.AMO_HEADERS) as response:
+                statuses = await response.json()
+                for status in statuses['_embedded']['statuses']:
+                    statuses_dict[status['id']] = (pipeline_id, status['name'])
+                return statuses_dict
 
     @staticmethod
     async def get_pipeline_id_by_name(name: str):

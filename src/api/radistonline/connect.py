@@ -1,3 +1,5 @@
+import asyncio
+
 import aiohttp
 
 from src.core.config import settings, headers
@@ -10,8 +12,8 @@ class RadistOnlineConnect:
         Получение ID подключения, необходим для работы с методами API
         :return: ID в формате целочисленного значения (int)
         """
-        url = settings.RADIST_SUBDOMAIN_URL + 'connections/'
+        url = 'https://api.radist.online/v2/companies/151429/connections/'
         async with aiohttp.ClientSession() as session:
             async with session.get(url=url, headers=headers.RADIST_HEADERS) as response:
                 response_json = await response.json()
-                return int(response_json['connections'][0]['id'])
+                return response_json['connections']

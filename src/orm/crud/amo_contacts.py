@@ -1,13 +1,38 @@
-from sqlalchemy import select, update
+from sqlalchemy import select, update, insert
 
 from src.orm.session import get_session
-from src.orm.models.amo_contacts import AmoContacts
+from src.orm.models.amo_contacts import AmoContacts, DoublesSearch
 
 
 class AmoContactsCRUD:
     """
     Здесь располагаются методы взаимодействия с таблицей amo_contacts
     """
+
+    @staticmethod
+    async def get_renamed_contact(contact_id: int):
+        async_session = await get_session()
+        async with async_session() as session:
+            async with session.begin():
+                result = await session.execute(
+                    select(AmoContacts).where(
+                        AmoContacts.contact_id == contact_id).filter(AmoContacts.is_renamed == False)
+                ) # noqa
+                contact: AmoContacts = result.fetchone()
+                return contact[0].name if contact else None
+
+    @staticmethod
+    async def changed_renamed_status(contact_id: int):
+        async_session = await get_session()
+        async with async_session() as session:
+            async with session.begin():
+                await session.execute(
+                    update(AmoContacts).where(AmoContacts.contact_id == contact_id).values(
+                        is_renamed=True
+                    )
+                )
+                await session.commit()
+
     @staticmethod
     async def update_contact_values(contact_id: int, update_columns: dict):
         """
@@ -27,7 +52,7 @@ class AmoContactsCRUD:
                     "diagnosis": AmoContacts.diagnosis,
                     "segment": AmoContacts.segment,
                 }
-                await session.execute(update(AmoContacts).where(AmoContacts.contact_id == contact_id).values( # noqa
+                await session.execute(update(AmoContacts).where(AmoContacts.contact_id == contact_id).values(  # noqa
                     {field_mappings[key]: value for key, value in update_columns.items()})
                 )
                 await session.commit()
@@ -40,7 +65,7 @@ class AmoContactsCRUD:
                 empty_fields = []
                 result = await session.execute(select(
                     AmoContacts.child_name, AmoContacts.child_birth_date, AmoContacts.city, AmoContacts.diagnosis,
-                    AmoContacts.doctor_enquiry).where(AmoContacts.contact_id == contact_id)) # noqa
+                    AmoContacts.doctor_enquiry).where(AmoContacts.contact_id == contact_id))  # noqa
                 contact_values = result.fetchone()
                 field_names = ["child_name", "child_birth_date", "city", "diagnosis", "doctor_enquiry"]
                 field_values = dict(zip(field_names, contact_values))
@@ -48,3 +73,28 @@ class AmoContactsCRUD:
                     if not value:
                         empty_fields.append(field)
                 return empty_fields, field_values
+
+
+class DoublesSearchCRUD:
+    """
+    Здесь располагаются методы взаимодействия с таблицей doubles_search
+    """
+
+    @staticmethod
+    async def search_double(phone_number: str):
+        async_session = await get_session()
+        async with async_session() as session:
+            async with session.begin():
+                result = await session.execute(
+                    select(DoublesSearch.phone_number).where(DoublesSearch.phone_number == phone_number))  # noqa
+                result = result.fetchone()
+                print("Результат поиска: ", result)
+                return result is not None
+
+    @staticmethod
+    async def add_phone(phone_number: str):
+        async_session = await get_session()
+        async with async_session() as session:
+            async with session.begin():
+                await session.execute(insert(DoublesSearch).values(phone_number=phone_number))
+                await session.commit()

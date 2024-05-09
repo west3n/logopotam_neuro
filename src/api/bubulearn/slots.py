@@ -1,26 +1,25 @@
+import asyncio
 import aiohttp
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from src.core.config import settings, headers
 
 
 def normalize_date(date: str):
     # Преобразование даты в удобный для ассистента формат
-    new_datetime = (datetime.fromisoformat(date.replace('Z', '+00:00')))
-    new_datetime_str = new_datetime.strftime("%d.%m.%Y %H:%M")
+    new_datetime = (datetime.strptime(date, '%Y-%m-%dT%H:%M:%SZ'))
     day_of_week = new_datetime.strftime("%A")
-    weekdays = {
-        'Monday': '(Понедельник)',
-        'Tuesday': '(Вторник)',
-        'Wednesday': '(Среда)',
-        'Thursday': '(Четверг)',
-        'Friday': '(Пятница)',
-        'Saturday': '(Суббота)',
-        'Sunday': '(Воскресенье)'
+    weekday = {
+        'Monday': 'Понедельник',
+        'Tuesday': 'Вторник',
+        'Wednesday': 'Среда',
+        'Thursday': 'Четверг',
+        'Friday': 'Пятница',
+        'Saturday': 'Суббота',
+        'Sunday': 'Воскресенье'
     }
-    new_datetime_str_with_day = f"{new_datetime_str} {weekdays[day_of_week]}"
-    return new_datetime_str_with_day
+    return new_datetime, weekday[day_of_week]
 
 
 class BubulearnSlotsFetcher:
@@ -34,11 +33,22 @@ class BubulearnSlotsFetcher:
         async with aiohttp.ClientSession() as session:
             async with session.get(url=url, headers=headers.BUBULEARN_HEADERS) as response:
                 data = await response.json()
-                slots = [{'slot_id': slot['slot_id'], 'date': normalize_date(slot['start'])} for slot in data['slots']]
+                slots = []
+                for slot in data['slots']:
+                    db_slot = {
+                            'slot_id': slot['slot_id'],
+                            'weekday': normalize_date(slot['start'])[1],
+                            'start_time': normalize_date(slot['start'])[0]
+                    }
+                    slots.append(db_slot)
                 if slot_id:
-                    date = next((slot['date'] for slot in slots if slot['slot_id'] == slot_id), None)
-                    return date
-                return str(slots)
+                    return next(
+                        (
+                            f'{slot_["start_time"].strftime("%d.%m.%Y %H:%M")} ({slot_["weekday"]})'
+                            for slot_ in slots if slot_['slot_id'] == slot_id
+                        ), None
+                    )
+                return slots
 
     @staticmethod
     async def add_diagnostic(slot_id: str, request: str, lead_id: int, phone: str, student_name: str,

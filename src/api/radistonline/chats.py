@@ -1,7 +1,6 @@
 import aiohttp
 
 from src.core.config import settings, headers
-from src.api.radistonline.connect import RadistOnlineConnect
 from src.api.radistonline.contacts import RadistOnlineContacts
 
 
@@ -17,7 +16,7 @@ class RadistOnlineChats:
         :return: Текст с успешным созданием чата и его ID или текст и код ошибки
         """
         url = settings.RADIST_SUBDOMAIN_URL + "messaging/chats/"
-        connection_id = await RadistOnlineConnect.get_connection_id()
+        connection_id = settings.CONNECTION_ID
         _, contact_id = await RadistOnlineContacts.create_contact(name, phone)
         data = {
             "connection_id": connection_id,

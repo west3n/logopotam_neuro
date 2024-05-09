@@ -2,11 +2,15 @@
 Для реализации обработки вебхуков мы используем Quart, так как Radist.Online и amoCRM требует делать это асинхронным
 методом, в котором необходимо в течение 2-3 секунд отвечать о принятии.
 """
-
 from quart import Quart, request, jsonify
+
+from src.core.config import logger
+from src.orm.crud.slots import SlotsCRUD
 
 from dialog.distributors.amo_distributor import amo_data_processing
 from dialog.distributors.radist_distributor import radist_data_processing
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
 
 app = Quart(__name__)
 
@@ -41,7 +45,13 @@ async def amocrm():
     return jsonify(''), 200
 
 
+@app.before_serving
+async def start_scheduler():
+    logger.info(f"Server started.")
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(SlotsCRUD.update_slots, 'interval', seconds=60)
+    scheduler.start()
+
 if __name__ == '__main__':
     import uvicorn
-
     uvicorn.run(app, host='0.0.0.0', port=5000)
