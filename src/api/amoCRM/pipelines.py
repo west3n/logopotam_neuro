@@ -77,3 +77,7 @@ class PipelineFetcher:
         statuses_dict = await PipelineFetcher.get_pipeline_statuses()
         _, status_name = statuses_dict.get(status_id)
         return status_name
+
+
+statuses = asyncio.run(PipelineFetcher.get_pipeline_statuses())
+print(statuses)

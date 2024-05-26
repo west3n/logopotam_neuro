@@ -1,14 +1,13 @@
-import asyncio
-import pytz
-
 from datetime import datetime, timedelta
 from typing import List
 
-from sqlalchemy import select, update, and_, func
+from sqlalchemy import select, update, and_
 from sqlalchemy.dialects.postgresql import insert
 
-from src.orm.session import get_session
+from src.orm.models.amo_leads import AmoLeads
+from src.orm.models.radist_chats import RadistChats
 from src.orm.models.radist_messages import RadistMessages
+from src.orm.session import get_session
 
 
 class RadistMessagesCRUD:
@@ -97,3 +96,69 @@ class RadistMessagesCRUD:
                     if time_difference > timedelta(hours=1):
                         return True
         return False
+
+    @staticmethod
+    async def change_delay_status(chat_id: int, new_status: str):
+        """
+        Изменяем статус сообщений
+        """
+        async_session = await get_session()
+        async with async_session() as session:
+            async with session.begin():
+                stmt = (update(RadistMessages).where(RadistMessages.chat_id == chat_id).values(
+                    delay_status=new_status))
+                await session.execute(stmt)
+                await session.commit()
+
+    @staticmethod
+    async def get_30_minutes_delay_chats():
+        thirty_minutes_ago = datetime.utcnow() - timedelta(minutes=30)
+        async_session = await get_session()
+        async with async_session() as session:
+            async with session.begin():
+                query = session.query(
+                    AmoLeads.lead_id,
+                    AmoLeads.chat_id,
+                    RadistChats.step
+                ).distinct(
+                    AmoLeads.lead_id,
+                    AmoLeads.chat_id,
+                    RadistChats.step
+                ).join(
+                    RadistMessages, AmoLeads.chat_id == RadistMessages.chat_id
+                ).join(
+                    RadistChats, AmoLeads.chat_id == RadistChats.chat_id
+                ).filter(
+                    RadistMessages.send_time < thirty_minutes_ago,
+                    RadistMessages.delay_status == None,  # noqa
+                    RadistMessages.sender == 'robot'
+                )
+
+                results = query.all()
+                return results
+
+    @staticmethod
+    async def get_2hrs_delay_chats():
+        two_hours_ago = datetime.utcnow() - timedelta(hours=2)
+        async_session = await get_session()
+        async with (async_session() as session):
+            async with session.begin():
+                query = session.query(
+                    AmoLeads.lead_id,
+                    AmoLeads.chat_id,
+                    RadistChats.step
+                ).distinct(
+                    AmoLeads.lead_id,
+                    AmoLeads.chat_id,
+                    RadistChats.step
+                ).join(
+                    RadistMessages, AmoLeads.chat_id == RadistMessages.chat_id
+                ).join(
+                    RadistChats, AmoLeads.chat_id == RadistChats.chat_id
+                ).filter(
+                    RadistMessages.send_time < two_hours_ago,
+                    RadistMessages.delay_status == '30m',
+                    RadistMessages.sender == 'robot'
+                )
+                results = query.all()
+                return results

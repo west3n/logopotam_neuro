@@ -1,4 +1,3 @@
-import asyncio
 from typing import Union, List
 
 from sqlalchemy import select, update
@@ -74,6 +73,20 @@ class AmoLeadsCRUD:
                 return lead[0].lead_name if lead else None
 
     @staticmethod
+    async def get_lead_id_by_contact_id(contact_id: int):
+        """
+        Получение ID сделки по ID контакта
+        :param contact_id: ID контакта
+        :return: ID сделки
+        """
+        async_session = await get_session()
+        async with async_session() as session:
+            async with session.begin():
+                result = await session.execute(select(AmoLeads).where(AmoLeads.contact_id == contact_id))  # noqa
+                lead: AmoLeads = result.fetchone()
+                return lead[0].lead_id if lead else None
+
+    @staticmethod
     async def save_new_chat_id(lead_id: int, chat_id: int):
         """
         Сохраняем chat_id для новой сделки
@@ -147,6 +160,23 @@ class AmoLeadsCRUD:
                 await session.execute(
                     update(AmoLeads).where(AmoLeads.lead_id == lead_id).values(
                         is_renamed=True
+                    )
+                )
+            await session.commit()
+
+    @staticmethod
+    async def update_lead_name(lead_id: int, lead_name: str):
+        """
+        Обновляем имя сделки
+        :param lead_id: ID сделки
+        :param lead_name: Новое имя сделки
+        """
+        async_session = await get_session()
+        async with async_session() as session:
+            async with session.begin():
+                await session.execute(
+                    update(AmoLeads).where(AmoLeads.lead_id == lead_id).values(
+                        lead_name=lead_name
                     )
                 )
             await session.commit()

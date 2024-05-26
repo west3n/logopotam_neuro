@@ -1,8 +1,6 @@
-import asyncio
-
 import aiohttp
 
-from src.core.config import settings, headers
+from src.core.config import settings, headers, logger
 
 
 class CustomFieldsFetcher:
@@ -85,8 +83,7 @@ class CustomFieldsFetcher:
             'child_birth_date': 'Дата рождения',
             'city': 'Страна/город',
             'doctor_enquiry': 'Подробнее о запросе',
-            'diagnosis': 'Диагноз (если есть)',
-            'segment': "Сегмент"
+            'diagnosis': 'Диагноз (если есть)'
         }
 
         for field, field_name in field_mapping.items():
@@ -98,17 +95,18 @@ class CustomFieldsFetcher:
                         break
 
                 if field_id is not None:
-                    # Переводим datetime в строку, чтобы записать в amoCRM
-                    field_value = child_data[field] if field_name != 'Дата рождения' else child_data[field].strftime(
-                        '%d-%m-%Y')  # noqa
+                    # Переводим datetime в timestamp, чтобы записать в amoCRM
+                    field_value = child_data[field] if field_name != 'Дата рождения' else int(child_data[field].timestamp())  # noqa
                     data['custom_fields_values'].append({
                         'field_id': field_id,
                         'field_name': field_name,
                         'values': [{'value': field_value}]
                     })
-
         url = settings.AMO_SUBDOMAIN_URL + '/api/v4/leads/' + str(lead_id) + '?with=contacts'
         async with aiohttp.ClientSession() as session:
             async with session.patch(url=url, headers=headers.AMO_HEADERS, json=data) as response:
                 if response.status == 200:
                     return await CustomFieldsFetcher.get_survey_lead_fields(str(lead_id))
+                else:
+                    print("Ошибка при записи данных в amoCRM: " + str(await response.json()))
+                    logger.info(f"Ошибка при записи данных в amoCRM: {str(await response.json())}")

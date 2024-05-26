@@ -10,7 +10,7 @@ from src.orm.crud.slots import SlotsCRUD
 from dialog.distributors.amo_distributor import amo_data_processing
 from dialog.distributors.radist_distributor import radist_data_processing
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-
+from src.core.scheduler import send_30_min_delay_messages, change_status_2hrs_delay_messages
 
 app = Quart(__name__)
 
@@ -47,10 +47,13 @@ async def amocrm():
 
 @app.before_serving
 async def start_scheduler():
-    logger.info(f"Server started.")
+    app.logger.info("Server started.")
     scheduler = AsyncIOScheduler()
     scheduler.add_job(SlotsCRUD.update_slots, 'interval', seconds=60)
+    scheduler.add_job(send_30_min_delay_messages, 'interval', seconds=60)
+    scheduler.add_job(change_status_2hrs_delay_messages, 'interval', seconds=60)
     scheduler.start()
+
 
 if __name__ == '__main__':
     import uvicorn

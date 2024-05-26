@@ -9,11 +9,13 @@ from openai.types.beta.threads import Text
 
 from src.api.amoCRM.custom_fields import CustomFieldsFetcher
 from src.api.amoCRM.leads import LeadFetcher
+from src.api.amoCRM.tags import TagsFetcher
+from src.api.amoCRM.tasks import TaskFetcher
 from src.api.radistonline.messages import RadistonlineMessages
 from src.api.bubulearn.slots import BubulearnSlotsFetcher
 
 from src.core.config import settings, openai_clients, logger
-from src.core.texts import RegistrationAssistantTexts
+from src.core.texts import RegistrationAssistantTexts, TaskTexts
 
 from src.dialog.objections.llm_instructor import JSONChecker, SurveyInitialCheck, GetSlotId
 
@@ -49,6 +51,15 @@ async def get_child_info(json_data: dict, segment: str):
             "city": json_data["Страна/город"],
             "child_name": json_data["Имя ребенка"],
             "child_birth_date": datetime.strptime(json_data["Дата рождения"], "%Y-%m-%d"),
+            "doctor_enquiry": json_data["Подробнее о запросе"],
+            "diagnosis": json_data['Диагноз (если есть)'],
+            "segment": segment,
+        }
+    except ValueError:
+        child_info = {
+            "city": json_data["Страна/город"],
+            "child_name": json_data["Имя ребенка"],
+            "child_birth_date": datetime.strptime(json_data["Дата рождения"], "%d.%m.%Y"),
             "doctor_enquiry": json_data["Подробнее о запросе"],
             "diagnosis": json_data['Диагноз (если есть)'],
             "segment": segment,
@@ -101,7 +112,8 @@ class Assistant:
                 ) as stream:
                     await stream.until_done()
                 break
-            except (BadRequestError, APIError):
+            except (BadRequestError, APIError) as e:
+                print(e)
                 await asyncio.sleep(3)
                 continue
 
@@ -186,6 +198,8 @@ class AssistantStream(AsyncAssistantEventHandler):
 
     async def on_text_done(self, text: Text) -> None:
         # Если за время генерации текста появилось новое сообщение, то с текстом дальше не работаем
+        print(f"Сгенерирован текст для сделки #{self.lead_id}: {text.value}")
+        logger.info(f"Сгенерирован текст для сделки #{self.lead_id}: {text.value}")
         unanswered_messages = await RadistMessagesCRUD.get_all_unanswered_messages(chat_id=self.chat_id)
         if len(unanswered_messages) > self.new_messages_count:
             pass
@@ -199,11 +213,16 @@ class AssistantStream(AsyncAssistantEventHandler):
                 baby_age_month, segment, for_online = await SurveyInitialCheck.get_survey_initial_check(
                     is_json)
                 print(baby_age_month, segment, for_online)
+                logger.info(
+                    f"Сделка #{self.lead_id}: Месяцы: {baby_age_month}, Сегмент: {segment}, Онлайн: {for_online}")
                 # Возраст ребёнка мы высчитываем в количестве месяцев для более надёжной проверки.
                 if baby_age_month < 42 or segment == "C" or not for_online:
 
-                    # Если сделка не прошла проверку, то просто меняем статус
+                    # Если сделка не прошла проверку, то просто меняем статус и ставим задачу
                     await LeadFetcher.change_lead_status(lead_id=self.lead_id, status_name='ТРЕБУЕТСЯ МЕНЕДЖЕР')
+                    await TaskFetcher.set_task(lead_id=str(self.lead_id), task_text=TaskTexts.NEED_MANAGER_TEXT)
+                    print(f"Изменили статус задачи с ID {self.lead_id} на Требуется менеджер, "
+                          f"так как сделка не прошла первичную проверку")
                     logger.info(f"Изменили статус задачи с ID {self.lead_id} на Требуется менеджер, "
                                 f"так как сделка не прошла первичную проверку")
                 else:
@@ -215,19 +234,19 @@ class AssistantStream(AsyncAssistantEventHandler):
                     _, child_data = await AmoContactsCRUD.get_contact_values(self.contact_id)
                     await CustomFieldsFetcher.save_survey_lead_fields(self.lead_id, child_data)
             else:
-                if "False" in text.value:
+                if "False" in text.value or "Otkaz" in text.value:
+                    tag_name = "вопрос не для нейро"
+                    if "Otkaz" in text.value:
+                        tag_name = "отказ"
                     await LeadFetcher.change_lead_status(lead_id=self.lead_id, status_name='ТРЕБУЕТСЯ МЕНЕДЖЕР')
+                    await TagsFetcher.add_new_tag(lead_id=str(self.lead_id), tag_name=tag_name)
+                    await TaskFetcher.set_task(lead_id=str(self.lead_id), task_text=TaskTexts.NEED_MANAGER_TEXT)
                     logger.info(f"Изменили статус задачи с ID {self.lead_id} на Требуется менеджер, "
                                 f"так как не удалось ответить на вопрос")
                 else:
                     await RadistonlineMessages.send_message(chat_id=self.chat_id, text=text.value)
-                    # Если сообщение от ассистента содержит "расчеты", то отправляем картинку
-                    if "расчеты" in text.value:
-                        await RadistonlineMessages.send_image(self.chat_id, settings.ONLINE_ADVANTAGES_IMAGE_URL)
-                    if "https://clck.ru/37CefT" in text.value:
-                        await LeadFetcher.change_lead_status(lead_id=self.lead_id, status_name='ТРЕБУЕТСЯ МЕНЕДЖЕР')
-                        logger.info(f"Изменили статус задачи с ID {self.lead_id} на Требуется менеджер, "
-                                    f"так как не удалось отработать возражение")
+                    print(f"Отправили сообщение! Сделка #{self.lead_id}: {text.value}")
+                    logger.info(f"Отправили сообщение! Сделка #{self.lead_id}: {text.value}")
 
 
 class RegistrationAssistantStream(AsyncAssistantEventHandler):
@@ -251,24 +270,21 @@ class RegistrationAssistantStream(AsyncAssistantEventHandler):
                 # Здесь логика после успешного выбора времени
                 slot_id = await GetSlotId.get_slot_id(text.value)
                 time = await BubulearnSlotsFetcher.get_slots(slot_id=slot_id)
-                first_message, second_message, third_message = RegistrationAssistantTexts.approve_appointment_time(
+                first_message = RegistrationAssistantTexts.approve_appointment_time(
                     time=time
                 )
                 await RadistonlineMessages.send_message(chat_id=self.chat_id, text=first_message)
                 await SlotsCRUD.take_slot(slot_id=slot_id)
-                await asyncio.sleep(5)
-                await RadistonlineMessages.send_message(chat_id=self.chat_id, text=second_message)
-                await RadistonlineMessages.send_message(chat_id=self.chat_id, text=third_message)
-                await LeadFetcher.change_lead_status(
-                    lead_id=self.lead_id,
-                    status_name='ВЫБРАЛИ ВРЕМЯ'
-                )
-            elif "False" in text.value:
+                await LeadFetcher.change_lead_status(lead_id=self.lead_id, status_name='ВЫБРАЛИ ВРЕМЯ')
+                await TaskFetcher.set_task(lead_id=str(self.lead_id), task_text=TaskTexts.TIME_SELECTED_TEXT)
+            elif "False" in text.value or "Otkaz" in text.value:
+                tag_name = "вопрос не для нейро"
+                if "Otkaz" in text.value:
+                    tag_name = "отказ"
                 # Здесь логика неуспешного выбора времени после большого количества попыток
-                await LeadFetcher.change_lead_status(
-                    lead_id=self.lead_id,
-                    status_name='ТРЕБУЕТСЯ МЕНЕДЖЕР'
-                )
+                await LeadFetcher.change_lead_status(lead_id=self.lead_id, status_name='ТРЕБУЕТСЯ МЕНЕДЖЕР')
+                await TagsFetcher.add_new_tag(lead_id=str(self.lead_id), tag_name=tag_name)
+                await TaskFetcher.set_task(lead_id=str(self.lead_id), task_text=TaskTexts.NEED_MANAGER_TEXT)
                 logger.info(f"Изменили статус задачи с ID {self.lead_id} на Требуется менеджер, так как не смогли "
                             f"договориться насчёт времени приема")
             else:
@@ -276,8 +292,3 @@ class RegistrationAssistantStream(AsyncAssistantEventHandler):
                 # Здесь проверяем, является ли сообщение ассистента помощью с ZOOM
                 if "ноутбука/компьютера" in text.value:
                     await RadistonlineMessages.send_image(self.chat_id, settings.ZOOM_IMAGE_URL)
-                # Здесь проверяем, не является ли сообщение ассистента последним
-                if "https://clck.ru/37CefT" in text.value:
-                    await LeadFetcher.change_lead_status(lead_id=self.lead_id, status_name='ТРЕБУЕТСЯ МЕНЕДЖЕР')
-                    logger.info(f"Изменили статус задачи с ID {self.lead_id} на Требуется менеджер, "
-                                f"так как не удалось отработать возражение")

@@ -4,6 +4,7 @@ import aiohttp
 
 from src.api.amoCRM.pipelines import PipelineFetcher
 from src.core.config import settings, headers
+from src.orm.crud.amo_statuses import AmoStatusesCRUD
 
 
 class LeadFetcher:
@@ -32,6 +33,17 @@ class LeadFetcher:
         async with aiohttp.ClientSession() as session:
             async with session.get(url=url, headers=headers.AMO_HEADERS) as response:
                 return await response.json()
+
+    @staticmethod
+    async def get_lead_status_id_by_lead_id(lead_id: str):
+        """
+        Получение идентификатора статуса для конкретного лида.
+
+        :param lead_id: Строка, идентификатор лида
+        :return: Строка, идентификатор статуса для конкретного лида
+        """
+        lead_data = await LeadFetcher.get_lead(lead_id)
+        return lead_data['status_id']
 
     @staticmethod
     async def change_lead_name(lead_id: str, new_name: str):

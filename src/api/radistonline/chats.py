@@ -28,6 +28,8 @@ class RadistOnlineChats:
             async with session.post(url=url, headers=headers.RADIST_HEADERS, json=data) as response:
                 if response.status == 200:
                     response_json = await response.json()
-                    return "Чат успешно создан!", response_json['chat_id']
+                    print("Чат успешно создан!", response_json['chat_id'])
+                    return response_json['chat_id']
                 else:
-                    return "Возникла проблема при создании чата!" + await response.text(), None
+                    print("Возникла проблема при создании чата!", await response.text())
+                    return None

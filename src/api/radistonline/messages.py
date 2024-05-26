@@ -5,6 +5,7 @@ import aiohttp
 from src.core.config import settings, headers
 from src.api.radistonline.chats import RadistOnlineChats
 
+
 class RadistonlineMessages:
     @staticmethod
     async def send_message(chat_id: int, text: str):
@@ -29,8 +30,10 @@ class RadistonlineMessages:
         async with aiohttp.ClientSession() as session:
             async with session.post(url=url, headers=headers.RADIST_HEADERS, json=data) as response:
                 if response.status == 200:
+                    print("Сообщение успешно отправлено!")
                     return "Сообщение успешно отправлено!"
                 else:
+                    print("Возникла ошибка при отправке сообщения!", await response.text())
                     return f"Возникла ошибка {response.status} c текстом:\n{await response.text()}"
 
     @staticmethod

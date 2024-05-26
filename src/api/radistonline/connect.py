@@ -17,3 +17,9 @@ class RadistOnlineConnect:
             async with session.get(url=url, headers=headers.RADIST_HEADERS) as response:
                 response_json = await response.json()
                 return response_json['connections']
+
+
+if __name__ == '__main__':
+    connections = asyncio.run(RadistOnlineConnect.get_connection_id())
+    for connection in connections:
+        print(connection)
