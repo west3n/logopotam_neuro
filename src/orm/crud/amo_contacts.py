@@ -1,7 +1,7 @@
-from sqlalchemy import select, update, insert
+from sqlalchemy import select, update
 
 from src.orm.session import get_session
-from src.orm.models.amo_contacts import AmoContacts, DoublesSearch
+from src.orm.models.amo_contacts import AmoContacts
 
 
 class AmoContactsCRUD:
@@ -16,7 +16,7 @@ class AmoContactsCRUD:
             async with session.begin():
                 result = await session.execute(
                     select(AmoContacts).where(
-                        AmoContacts.contact_id == contact_id).filter(AmoContacts.is_renamed == False)
+                        AmoContacts.contact_id == contact_id).filter(AmoContacts.is_renamed == False) # noqa
                 ) # noqa
                 contact: AmoContacts = result.fetchone()
                 return contact[0].name if contact else None
@@ -27,7 +27,7 @@ class AmoContactsCRUD:
         async with async_session() as session:
             async with session.begin():
                 await session.execute(
-                    update(AmoContacts).where(AmoContacts.contact_id == contact_id).values(
+                    update(AmoContacts).where(AmoContacts.contact_id == contact_id).values(  # noqa
                         is_renamed=True
                     )
                 )
@@ -73,28 +73,3 @@ class AmoContactsCRUD:
                     if not value:
                         empty_fields.append(field)
                 return empty_fields, field_values
-
-
-class DoublesSearchCRUD:
-    """
-    Здесь располагаются методы взаимодействия с таблицей doubles_search
-    """
-
-    @staticmethod
-    async def search_double(phone_number: str):
-        async_session = await get_session()
-        async with async_session() as session:
-            async with session.begin():
-                result = await session.execute(
-                    select(DoublesSearch.phone_number).where(DoublesSearch.phone_number == phone_number))  # noqa
-                result = result.fetchone()
-                print("Результат поиска: ", result)
-                return result is not None
-
-    @staticmethod
-    async def add_phone(phone_number: str):
-        async_session = await get_session()
-        async with async_session() as session:
-            async with session.begin():
-                await session.execute(insert(DoublesSearch).values(phone_number=phone_number))
-                await session.commit()

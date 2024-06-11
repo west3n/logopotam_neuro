@@ -2,15 +2,14 @@
 Для реализации обработки вебхуков мы используем Quart, так как Radist.Online и amoCRM требует делать это асинхронным
 методом, в котором необходимо в течение 2-3 секунд отвечать о принятии.
 """
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from quart import Quart, request, jsonify
 
-from src.core.config import logger
-from src.orm.crud.slots import SlotsCRUD
+from src.dialog.distributors.amo_distributor import amo_data_processing
+from src.dialog.distributors.radist_distributor import radist_data_processing
 
-from dialog.distributors.amo_distributor import amo_data_processing
-from dialog.distributors.radist_distributor import radist_data_processing
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from src.core.scheduler import send_30_min_delay_messages, change_status_2hrs_delay_messages
+from src.orm.crud.slots import SlotsCRUD
 
 app = Quart(__name__)
 
@@ -47,11 +46,16 @@ async def amocrm():
 
 @app.before_serving
 async def start_scheduler():
-    app.logger.info("Server started.")
+    """
+    Запуск ежеминутных задач
+    1. Обновление слотов
+    2. Отправка сообщений при 30-минутном молчании
+    3. Смена статусов сделок при 2-х часовом молчании
+    """
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(SlotsCRUD.update_slots, 'interval', seconds=60)
-    scheduler.add_job(send_30_min_delay_messages, 'interval', seconds=60)
-    scheduler.add_job(change_status_2hrs_delay_messages, 'interval', seconds=60)
+    scheduler.add_job(SlotsCRUD.update_slots, 'interval', seconds=50)
+    scheduler.add_job(send_30_min_delay_messages, 'interval', seconds=80)
+    scheduler.add_job(change_status_2hrs_delay_messages, 'interval', seconds=70)
     scheduler.start()
 
 

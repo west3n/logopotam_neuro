@@ -1,10 +1,6 @@
-import asyncio
-from typing import List
-
-from sqlalchemy import select, and_
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
-from src.orm.models.radist_messages import RadistMessages
 from src.orm.session import get_session
 from src.orm.models.amo_statuses import AmoStatuses
 

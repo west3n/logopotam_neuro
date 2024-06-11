@@ -9,8 +9,8 @@ class TaskFetcher:
     @staticmethod
     async def set_task(lead_id: str, task_text: str):
         """
-        Постановка задачи
-        :return: Строка, сообщение об успешном или неудачном изменении статуса задачи
+        Постановка задачи в сделку
+        :return: None
         """
         lead = await LeadFetcher.get_lead(lead_id)
         responsible_user_id = lead['responsible_user_id']
@@ -28,11 +28,6 @@ class TaskFetcher:
         async with aiohttp.ClientSession() as session:
             async with session.post(url=url, headers=headers.AMO_HEADERS, json=data) as response:
                 if response.status == 200:
-                    print(f'Задача в сделке с идентификатором {lead_id} поставлена')
-                    logger.info(f'Задача в сделке с идентификатором {lead_id} поставлена')
+                    logger.info(f'Задача в сделке {lead_id} поставлена')
                 else:
-                    print(
-                        f'Возникла проблема при постановке задачи в сделку с идентификатором {lead_id} : {await response.text()}')
-                    logger.error(
-                        f'Возникла проблема при постановке задачи в сделку с идентификатором {lead_id} : {await response.text()}')
-
+                    logger.error(f'Проблема при постановке задачи в сделке {lead_id} : {str(await response.json())}')

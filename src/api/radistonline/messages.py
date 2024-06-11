@@ -1,9 +1,10 @@
-import asyncio
-
 import aiohttp
 
-from src.core.config import settings, headers
-from src.api.radistonline.chats import RadistOnlineChats
+from src.api.amoCRM.leads import LeadFetcher
+from src.core.config import settings, headers, logger
+from src.api.amoCRM.custom_fields import CustomFieldsFetcher
+from src.orm.crud.amo_leads import AmoLeadsCRUD
+from src.orm.crud.amo_statuses import AmoStatusesCRUD
 
 
 class RadistonlineMessages:
@@ -16,35 +17,39 @@ class RadistonlineMessages:
         :param text: Текст сообщения
         :return: Текст, сообщающий об успешной отправке сообщения (или кода с текстом ошибки)
         """
-        url = settings.RADIST_SUBDOMAIN_URL + 'messaging/messages/'
-        connection_id = settings.CONNECTION_ID
-        data = {
-            "connection_id": connection_id,
-            "chat_id": chat_id,
-            "mode": "async",
-            "message_type": "text",
-            "text": {
-                "text": text
+        lead_id = await AmoLeadsCRUD.get_value_by_chat_id(chat_id, 'lead_id')
+        status_id = await LeadFetcher.get_lead_status_id_by_lead_id(str(lead_id))
+
+        # Если статус сделки СТАРТ НЕЙРО
+        if status_id == 66505833:
+            url = settings.RADIST_SUBDOMAIN_URL + 'messaging/messages/'
+            connection_id = settings.CONNECTION_ID
+            data = {
+                "connection_id": connection_id,
+                "chat_id": chat_id,
+                "mode": "async",
+                "message_type": "text",
+                "text": {
+                    "text": text
+                }
             }
-        }
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url=url, headers=headers.RADIST_HEADERS, json=data) as response:
-                if response.status == 200:
-                    print("Сообщение успешно отправлено!")
-                    return "Сообщение успешно отправлено!"
-                else:
-                    print("Возникла ошибка при отправке сообщения!", await response.text())
-                    return f"Возникла ошибка {response.status} c текстом:\n{await response.text()}"
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url=url, headers=headers.RADIST_HEADERS, json=data) as response:
+                    if response.status == 200:
+                        await CustomFieldsFetcher.message_counter(lead_id)
+                    else:
+                        logger.error(f"Ошибка при отправке сообщения в чат #{chat_id}: {str(await response.json())}")
+        else:
+            logger.info(f"Не отправляем сообщение в чат #{chat_id} потому что статус сделки не СТАРТ НЕЙРО")
 
     @staticmethod
-    async def send_image(chat_id: int, image_url: str, caption=None):
+    async def send_image(chat_id: int, image_url: str):
         """
         Отправка картинки через chat_id клиента
 
         :param chat_id: ID чата клиента из списка чатов Radist.Online
         :param image_url: URL картинки, который берётся через метод upload_file
-        :param caption: Подпись к картинке, может быть None
-        :return: Текст, сообщающий об успешной отправке сообщения (или кода с текстом ошибки)
+        :return: None
         """
         url = settings.RADIST_SUBDOMAIN_URL + 'messaging/messages/'
         connection_id = settings.CONNECTION_ID
@@ -54,13 +59,13 @@ class RadistonlineMessages:
             "mode": "async",
             "message_type": "image",
             "image": {
-                "caption": '' if not caption else caption,
+                "caption": '',
                 "url": image_url
             }
         }
         async with aiohttp.ClientSession() as session:
             async with session.post(url=url, headers=headers.RADIST_HEADERS, json=data) as response:
                 if response.status == 200:
-                    return "Сообщение успешно отправлено!"
+                    logger.info(f"Картинка успешно отправлена! Чат #{chat_id}")
                 else:
-                    return f"Возникла ошибка {response.status} c текстом:\n{await response.text()}"
+                    logger.error(f"Ошибка при отправке картинки в чат #{chat_id}! {str(await response.json())}")

@@ -1,13 +1,14 @@
-import asyncio
 import aiohttp
 
 from datetime import datetime
 
-from src.core.config import settings, headers
+from src.core.config import settings, headers, logger
 
 
 def normalize_date(date: str):
-    # Преобразование даты в удобный для ассистента формат
+    """
+    Преобразование даты в удобный для ассистента формат
+    """
     new_datetime = (datetime.strptime(date, '%Y-%m-%dT%H:%M:%SZ'))
     day_of_week = new_datetime.strftime("%A")
     weekday = {
@@ -51,24 +52,42 @@ class BubulearnSlotsFetcher:
                 return slots
 
     @staticmethod
-    async def add_diagnostic(slot_id: str, request: str, lead_id: int, phone: str, student_name: str,
-                             student_birthdate: str, customer_name: str = None):
+    async def is_slot_free(slot_id: str):
         """
-        Запись клиента на приём
-        :param slot_id: ID слота
-        :param request: Запрос клиента
-        :param lead_id: id лида из AmoCRM
-        :param phone: Номер телефона клиента
-        :param student_name: Имя ребёнка
-        :param student_birthdate: Дата рождения ребёнка
-        :param customer_name: Имя клиента (необязательно)
-        :return:
+        Проверка на свободность слота
+        :param slot_id:
+        :return: True если слот свободен, False если нет
         """
-        url = settings.BUBULEARN_SUBDOMAIN_URL + '/events/diagnostic/'
-        data = {'slot_id': slot_id, 'request': request, 'lead_id': lead_id, 'phone_number': phone,
-                'student_name': student_name, 'student_birthdate': student_birthdate}
-        if customer_name:
-            data['customer_name'] = customer_name
+        url = settings.BUBULEARN_SUBDOMAIN_URL + f'/slots/{slot_id}/free/'
         async with aiohttp.ClientSession() as session:
-            async with session.post(url=url, headers=headers.BUBULEARN_HEADERS, json=data) as response:
-                return True if response.status == 200 else False
+            async with session.get(url=url, headers=headers.BUBULEARN_HEADERS) as response:
+                response_data = await response.json()
+                if response.status == 200:
+                    is_slot_free = response_data['is_free']
+                    return is_slot_free
+                else:
+                    logger.error(f"Ошибка при проверке свободности слота {slot_id}: {str(await response.json())}")
+                    return False
+
+    # @staticmethod
+    # async def add_diagnostic(slot_id: str, request: str, lead_id: int, phone: str, student_name: str,
+    #                          student_birthdate: str, customer_name: str = None):
+    #     """
+    #     Запись клиента на приём
+    #     :param slot_id: ID слота
+    #     :param request: Запрос клиента
+    #     :param lead_id: id лида из AmoCRM
+    #     :param phone: Номер телефона клиента
+    #     :param student_name: Имя ребёнка
+    #     :param student_birthdate: Дата рождения ребёнка
+    #     :param customer_name: Имя клиента (необязательно)
+    #     :return:
+    #     """
+    #     url = settings.BUBULEARN_SUBDOMAIN_URL + '/events/diagnostic/'
+    #     data = {'slot_id': slot_id, 'request': request, 'lead_id': lead_id, 'phone_number': phone,
+    #             'student_name': student_name, 'student_birthdate': student_birthdate}
+    #     if customer_name:
+    #         data['customer_name'] = customer_name
+    #     async with aiohttp.ClientSession() as session:
+    #         async with session.post(url=url, headers=headers.BUBULEARN_HEADERS, json=data) as response:
+    #             return True if response.status == 200 else False

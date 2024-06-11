@@ -19,5 +19,6 @@ class AmoLeads(BaseModel):
     status_id = Column("status_id", Integer, ForeignKey(AmoStatuses.status_id)) # noqa
     contact_id = Column("contact_id", Integer, ForeignKey(AmoContacts.contact_id)) # noqa
     chat_id = Column("chat_id", Integer, ForeignKey(RadistChats.chat_id)) # noqa
+    connection_id = Column("connection_id", Integer, nullable=True)
     lead_name = Column("lead_name", String(255))
     is_renamed = Column("is_renamed", Boolean, default=False)

@@ -1,7 +1,6 @@
 import aiohttp
-import asyncio
 
-from src.core.config import settings, headers
+from src.core.config import settings, headers, logger
 
 
 class TagsFetcher:
@@ -33,7 +32,7 @@ class TagsFetcher:
     @staticmethod
     async def add_new_tag(lead_id: str, tag_name: str):
         """
-        Добавление нового тега к лиду
+        Добавление нового тега к сделке
         """
         url = settings.AMO_SUBDOMAIN_URL + '/api/v4/leads/' + lead_id
         old_tags = await TagsFetcher.get_old_lead_tags_ids(lead_id)
@@ -41,4 +40,7 @@ class TagsFetcher:
         data = {'_embedded': {'tags': old_tags + new_tag_id}}
         async with aiohttp.ClientSession() as session:
             async with session.patch(url=url, json=data, headers=headers.AMO_HEADERS) as response:
-                return await response.json()
+                if response.status == 200:
+                    logger.info(f'Тег {tag_name} добавлен к сделке {lead_id}')
+                else:
+                    logger.error(f'Не удалось добавить тег {tag_name} к сделке {lead_id}: {str(await response.json())}')

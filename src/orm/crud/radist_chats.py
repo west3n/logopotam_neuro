@@ -63,6 +63,17 @@ class RadistChatsCRUD:
                 )
                 await session.commit()
 
+    @staticmethod
+    async def change_delay_status(chat_id: int, status: bool):
+        chat_id = int(chat_id) if isinstance(chat_id, str) else chat_id
+        async_session = await get_session()
+        async with async_session() as session:
+            async with session.begin():
+                await session.execute(
+                    update(RadistChats).values(is_delay_message_sent=status).where(RadistChats.chat_id == chat_id) # noqa
+                )
+                await session.commit()
+
 
 class ChatStepsCRUD:
     @staticmethod

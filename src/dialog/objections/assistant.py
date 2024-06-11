@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Union
 
 from openai import AsyncAssistantEventHandler, BadRequestError, APIError
-from openai.types.beta.threads import Text
+from openai.types.beta.threads import Text, TextDelta, Message
 
 from src.api.amoCRM.custom_fields import CustomFieldsFetcher
 from src.api.amoCRM.leads import LeadFetcher
@@ -37,34 +37,23 @@ current_day_of_week = {
 
 
 async def get_child_info(json_data: dict, segment: str):
-    try:
-        child_info = {
-            "city": json_data["Страна/город"],
-            "child_name": json_data["Имя ребёнка"],
-            "child_birth_date": datetime.strptime(json_data["Дата рождения"], "%Y-%m-%d"),
-            "doctor_enquiry": json_data["Подробнее о запросе"],
-            "diagnosis": json_data['Диагноз (если есть)'],
-            "segment": segment,
-        }
-    except KeyError:
-        child_info = {
-            "city": json_data["Страна/город"],
-            "child_name": json_data["Имя ребенка"],
-            "child_birth_date": datetime.strptime(json_data["Дата рождения"], "%Y-%m-%d"),
-            "doctor_enquiry": json_data["Подробнее о запросе"],
-            "diagnosis": json_data['Диагноз (если есть)'],
-            "segment": segment,
-        }
-    except ValueError:
-        child_info = {
-            "city": json_data["Страна/город"],
-            "child_name": json_data["Имя ребенка"],
-            "child_birth_date": datetime.strptime(json_data["Дата рождения"], "%d.%m.%Y"),
-            "doctor_enquiry": json_data["Подробнее о запросе"],
-            "diagnosis": json_data['Диагноз (если есть)'],
-            "segment": segment,
-        }
+    child_info = {
+        "city": json_data["Страна/город"],
+        "child_name": json_data["Имя ребёнка"],
+        "child_birth_date": datetime.strptime(json_data["Дата рождения"], "%Y-%m-%d"),
+        "doctor_enquiry": json_data["Подробнее о запросе"],
+        "diagnosis": json_data['Диагноз (если есть)'],
+        "segment": segment,
+    }
     return child_info
+
+
+def slots_formatting(slots):
+    for slot in slots:
+        slot['datetime'] = datetime.strptime(slot['start_time'], '%d.%m.%Y %H:%M')
+    slots.sort(key=lambda x: x['datetime'])
+    result = '\n'.join(f"{slot['weekday']} - {slot['start_time']}" for slot in slots)
+    return result
 
 
 class Assistant:
@@ -75,6 +64,7 @@ class Assistant:
         :return: ID треда
         """
         thread = await openai_client.beta.threads.create()
+        print(thread.id)
         return thread.id
 
     @staticmethod
@@ -105,24 +95,24 @@ class Assistant:
         while True:
             try:
                 await Assistant.create_message(thread_id, content)  # noqa
+                start_time = datetime.now()
                 async with openai_client.beta.threads.runs.stream(
                         thread_id=thread_id,
                         assistant_id=settings.OPENAI_ASSISTANT_ID,
-                        event_handler=AssistantStream(lead_id, chat_id, contact_id, new_messages),
+                        event_handler=AssistantStream(lead_id, chat_id, contact_id, new_messages, start_time),
                 ) as stream:
                     await stream.until_done()
                 break
             except (BadRequestError, APIError) as e:
-                print(e)
                 await asyncio.sleep(3)
                 continue
 
     @staticmethod
-    async def get_first_registration_message(chat_id: int):
+    async def get_first_registration_message(chat_id: int = None):
         slots, _ = await SlotsCRUD.read_slots()
         moscow_time = datetime.now(pytz.timezone('Europe/Moscow')).strftime('%H:%M')
         weekday = current_day_of_week[datetime.now(pytz.timezone('Europe/Moscow')).weekday()]
-        content = "Cлоты на неделю: " + slots + f"\n\nСейчас в Москве {moscow_time}, {weekday}"
+        content = f"Московское время: {moscow_time}, {weekday.capitalize()}\n\nCлоты:\n{slots_formatting(slots)}"
         thread_id = await Assistant.create_thread()
         await RadistChatsCRUD.save_new_registration_thread_id(chat_id, thread_id)
         await Assistant.create_message(thread_id, content)
@@ -147,6 +137,7 @@ class Assistant:
         messages = await openai_client.beta.threads.messages.list(thread_id=thread_id)
         response = messages.data[0].content[0].text.value
         await RadistonlineMessages.send_message(chat_id=chat_id, text=response)
+        logger.info(f"Отправлено первое сообщение о регистрации в чат {chat_id}: {response}")
 
     @staticmethod
     async def get_registration_response_stream(
@@ -158,11 +149,13 @@ class Assistant:
         :param lead_id: ID сделки
         :param contact_id: ID контакта
         """
-        thread_id = await RadistChatsCRUD.get_registration_thread_id(chat_id)
+        # thread_id = await RadistChatsCRUD.get_registration_thread_id(chat_id)
+        thread_id = 'thread_BkMhx9PemUdmFZBdkrHXUkAo'
         slots, _ = await SlotsCRUD.read_slots()
+        start_time = datetime.now()
         moscow_time = datetime.now(pytz.timezone('Europe/Moscow')).strftime('%H:%M')
         weekday = current_day_of_week[datetime.now(pytz.timezone('Europe/Moscow')).weekday()]
-        content = f"Cлоты: {slots}\n\nМосковское время: {moscow_time}, {weekday}"
+        content = f"Московское время: {moscow_time}, {weekday.capitalize()}\n\nCлоты:\n{slots_formatting(slots)}"
         # Если нет новых сообщений, значит оно первое и должно быть списком с временем свободных слотов
         if not new_messages:
             message_text = content
@@ -172,13 +165,15 @@ class Assistant:
         if not thread_id:
             thread_id = await Assistant.create_thread()
             await RadistChatsCRUD.save_new_registration_thread_id(chat_id, thread_id)
+        logger.info(f'Сгенерировал сообщение в сделке {lead_id}: {message_text}')
         while True:
             try:
                 await Assistant.create_message(thread_id, message_text)
                 async with openai_client.beta.threads.runs.stream(
                         thread_id=thread_id,
                         assistant_id=settings.OPENAI_REGISTRATION_ASSISTANT_ID,
-                        event_handler=RegistrationAssistantStream(lead_id, chat_id, contact_id, new_messages),
+                        event_handler=RegistrationAssistantStream(start_time, lead_id, chat_id, contact_id,
+                                                                  new_messages)
                 ) as stream:
                     await stream.until_done()
                 break
@@ -188,17 +183,22 @@ class Assistant:
 
 
 class AssistantStream(AsyncAssistantEventHandler):
-    def __init__(self, lead_id: int, chat_id: int, contact_id: int, new_messages: list):
+    def __init__(self, lead_id: int, chat_id: int, contact_id: int, new_messages: list, start_time: datetime):
         self.lead_id = lead_id
         self.chat_id = chat_id
         self.contact_id = contact_id
         self.new_messages = new_messages
         self.new_messages_count = len(new_messages)
+        self.counter = 0
+        self.start_time = start_time
         super().__init__()
 
-    async def on_text_done(self, text: Text) -> None:
+    async def on_message_done(self, message: Message) -> None:
+        text = message.content[0].text
+        timer_seconds = (datetime.now() - self.start_time).total_seconds()
+        if timer_seconds < 20:
+            await asyncio.sleep(20 - timer_seconds)
         # Если за время генерации текста появилось новое сообщение, то с текстом дальше не работаем
-        print(f"Сгенерирован текст для сделки #{self.lead_id}: {text.value}")
         logger.info(f"Сгенерирован текст для сделки #{self.lead_id}: {text.value}")
         unanswered_messages = await RadistMessagesCRUD.get_all_unanswered_messages(chat_id=self.chat_id)
         if len(unanswered_messages) > self.new_messages_count:
@@ -206,33 +206,79 @@ class AssistantStream(AsyncAssistantEventHandler):
         else:
             new_messages_ids = [i[0] for i in unanswered_messages]
             await RadistMessagesCRUD.change_status(new_messages_ids, 'answered')
-            is_json = await JSONChecker.check_json(text.value)
-            if is_json:
-                survey_complete_text = RegistrationAssistantTexts.survey_completed()
-                await RadistonlineMessages.send_message(chat_id=self.chat_id, text=survey_complete_text)
-                baby_age_month, segment, for_online = await SurveyInitialCheck.get_survey_initial_check(
-                    is_json)
-                print(baby_age_month, segment, for_online)
-                logger.info(
-                    f"Сделка #{self.lead_id}: Месяцы: {baby_age_month}, Сегмент: {segment}, Онлайн: {for_online}")
+            if 'json' in text.value:
+                try:
+                    json_data = await JSONChecker.inject_json(text.value)
+                    logger.info(f"Получил JSON в сделке #{self.lead_id}: {str(json_data)}")
+                except Exception as e:
+                    json_data = await JSONChecker.inject_json(text.value)
+                    logger.error(f"При обработке JSON произошла ошибка: {e}. Сделка #{self.lead_id}")
+                    pass
+                try:
+                    await CustomFieldsFetcher.save_survey_lead_fields(self.lead_id, json_data)
+                    logger.info(f"Сделка #{self.lead_id}: данные по клиенту сохранены в amoCRM")
+                except Exception as e:
+                    logger.error(f"При сохранении данных по клиенту в сделке {self.lead_id} произошла ошибка: {e}")
+                    pass
+                try:
+                    survey_complete_text = RegistrationAssistantTexts.survey_completed()
+                    await RadistonlineMessages.send_message(chat_id=self.chat_id, text=survey_complete_text)
+                    logger.info(f"Сделка #{self.lead_id}: сообщение об окончании опроса отправлено")
+                except Exception as e:
+                    logger.error(f"Ошибка отправки сообщения об окончании опроса в сделке {self.lead_id}: {e}")
+                    pass
+                try:
+                    baby_age_month, segment, for_online = await SurveyInitialCheck.get_survey_initial_check(
+                        json_data)
+                    logger.info(
+                        f"Сделка #{self.lead_id}: Месяцы: {baby_age_month}, Сегмент: {segment}, Онлайн: {for_online}")
+                except Exception as e:
+                    baby_age_month, segment, for_online = await SurveyInitialCheck.get_survey_initial_check(
+                        json_data)
+                    logger.error(
+                        f"При получении данных для проверки анкеты клиента в сделке {self.lead_id} произошла ошибка: {e}")
+                    pass
                 # Возраст ребёнка мы высчитываем в количестве месяцев для более надёжной проверки.
-                if baby_age_month < 42 or segment == "C" or not for_online:
-
+                if baby_age_month > 42 and segment != "C" and for_online:
+                    try:
+                        await Assistant.get_first_registration_message(chat_id=self.chat_id)
+                        logger.info(f"Сделка #{self.lead_id}: Сообщение о регистрации отправлено")
+                    except Exception as e:
+                        logger.error(
+                            f"При отправке сообщения о регистрации в сделке {self.lead_id} произошла ошибка: {e}")
+                        pass
+                    try:
+                        await ChatStepsCRUD.update(chat_id=self.chat_id, step="registration")
+                        logger.info(f"Сделка #{self.lead_id}: Статус чата обновлен")
+                    except Exception as e:
+                        logger.error(f"При обновлении статуса чата в сделке {self.lead_id} произошла ошибка: {e}")
+                        pass
+                    try:
+                        child_info = await get_child_info(json_data, segment)
+                        logger.info(f"Сделка #{self.lead_id}: Данные по ребёнку: {child_info}")
+                    except Exception as e:
+                        child_info = await get_child_info(json_data, segment)
+                        logger.error(f"При получении данных по ребёнку в сделке {self.lead_id} произошла ошибка: {e}")
+                        pass
+                    try:
+                        await AmoContactsCRUD.update_contact_values(contact_id=self.contact_id,
+                                                                    update_columns=child_info)
+                        logger.info(f"Сделка #{self.lead_id}: Данные по контакту в БД обновлены")
+                    except Exception as e:
+                        logger.error(f"При обновлении данных по контакту в сделке {self.lead_id} произошла ошибка: {e}")
+                        pass
+                else:
+                    if baby_age_month < 42:
+                        tag_name = 'младше 3,6'
+                    elif segment == "C":
+                        tag_name = 'сегмент С'
+                    else:
+                        tag_name = 'диагноз'
                     # Если сделка не прошла проверку, то просто меняем статус и ставим задачу
                     await LeadFetcher.change_lead_status(lead_id=self.lead_id, status_name='ТРЕБУЕТСЯ МЕНЕДЖЕР')
                     await TaskFetcher.set_task(lead_id=str(self.lead_id), task_text=TaskTexts.NEED_MANAGER_TEXT)
-                    print(f"Изменили статус задачи с ID {self.lead_id} на Требуется менеджер, "
-                          f"так как сделка не прошла первичную проверку")
-                    logger.info(f"Изменили статус задачи с ID {self.lead_id} на Требуется менеджер, "
-                                f"так как сделка не прошла первичную проверку")
-                else:
-                    await Assistant.get_first_registration_message(chat_id=self.chat_id)
-                    await ChatStepsCRUD.update(chat_id=self.chat_id, step="registration")
-                    child_info = await get_child_info(is_json, segment)
-                    await AmoContactsCRUD.update_contact_values(contact_id=self.contact_id,
-                                                                update_columns=child_info)
-                    _, child_data = await AmoContactsCRUD.get_contact_values(self.contact_id)
-                    await CustomFieldsFetcher.save_survey_lead_fields(self.lead_id, child_data)
+                    await TagsFetcher.add_new_tag(lead_id=str(self.lead_id), tag_name=tag_name)
+                    logger.info(f"Сделка #{self.lead_id} не прошла первичную проверку. Тег: {tag_name}")
             else:
                 if "False" in text.value or "Otkaz" in text.value:
                     tag_name = "вопрос не для нейро"
@@ -241,24 +287,29 @@ class AssistantStream(AsyncAssistantEventHandler):
                     await LeadFetcher.change_lead_status(lead_id=self.lead_id, status_name='ТРЕБУЕТСЯ МЕНЕДЖЕР')
                     await TagsFetcher.add_new_tag(lead_id=str(self.lead_id), tag_name=tag_name)
                     await TaskFetcher.set_task(lead_id=str(self.lead_id), task_text=TaskTexts.NEED_MANAGER_TEXT)
-                    logger.info(f"Изменили статус задачи с ID {self.lead_id} на Требуется менеджер, "
-                                f"так как не удалось ответить на вопрос")
+                    logger.info(f"В сделке {self.lead_id} не удалось ответить на вопрос")
                 else:
                     await RadistonlineMessages.send_message(chat_id=self.chat_id, text=text.value)
-                    print(f"Отправили сообщение! Сделка #{self.lead_id}: {text.value}")
                     logger.info(f"Отправили сообщение! Сделка #{self.lead_id}: {text.value}")
 
 
 class RegistrationAssistantStream(AsyncAssistantEventHandler):
-    def __init__(self, lead_id: int, chat_id: int, contact_id: int, new_messages: list):
+    def __init__(self, start_time: datetime, lead_id: int = None, chat_id: int = None, contact_id: int = None,
+                 new_messages: list = None):
         self.lead_id = lead_id
         self.chat_id = chat_id
         self.contact_id = contact_id
         self.new_messages = new_messages
         self.new_messages_count = len(new_messages)
+        self.counter = 0
+        self.start_time = start_time
         super().__init__()
 
-    async def on_text_done(self, text: Text) -> None:
+    async def on_message_done(self, message: Message) -> None:
+        text = message.content[0].text
+        timer_seconds = (datetime.now() - self.start_time).total_seconds()
+        if timer_seconds < 20:
+            await asyncio.sleep(20 - timer_seconds)
         # Если за время генерации текста появилось новое сообщение, то с текстом дальше не работаем
         unanswered_messages = await RadistMessagesCRUD.get_all_unanswered_messages(chat_id=self.chat_id)
         if len(unanswered_messages) > self.new_messages_count:
@@ -266,29 +317,61 @@ class RegistrationAssistantStream(AsyncAssistantEventHandler):
         else:
             new_messages_ids = [i[0] for i in unanswered_messages]
             await RadistMessagesCRUD.change_status(new_messages_ids, 'answered')
-            if "True" in text.value:
-                # Здесь логика после успешного выбора времени
-                slot_id = await GetSlotId.get_slot_id(text.value)
+        if "True" in text.value:
+
+            # Здесь логика после успешного выбора времени
+            logger.info(f"В сделке с ID {self.lead_id} клиент выбрал время: {text.value}")
+            slot_id = await GetSlotId.get_slot_id(text.value)
+
+            # Проверяем, свободен ли слот
+            is_slot_valid = await BubulearnSlotsFetcher.is_slot_free(slot_id=slot_id)
+            if not is_slot_valid:
+                logger.info(f"В сделке с ID #{self.lead_id} слот уже занят: {slot_id}")
+                status_value = await CustomFieldsFetcher.get_777978_status_value(lead_id=self.lead_id)
+                if status_value and status_value == "Повторное предложение слота":
+
+                    # В этом случае повторное предложение уже было сделано, поэтому просто меняем статус
+                    await LeadFetcher.change_lead_status(lead_id=self.lead_id, status_name='В работе ( не было звонка)')
+                    logger.info(f"В сделке с ID #{self.lead_id} повторное предложение уже было сделано")
+                else:
+
+                    # В этом случае повторное предложение еще не сделано, поэтому отправляем повторное предложение
+                    slots, _ = await SlotsCRUD.read_slots()
+                    moscow_time = datetime.now(pytz.timezone('Europe/Moscow')).strftime('%H:%M')
+                    weekday = current_day_of_week[datetime.now(pytz.timezone('Europe/Moscow')).weekday()]
+                    content = f"Московское время: {moscow_time}, {weekday.capitalize()}\n\nCлоты:\n{slots_formatting(slots)}"
+                    message_text = f"Ответ клиента: Слот занят\n\n{content}"
+                    await Assistant.get_registration_response_stream(
+                        lead_id=self.lead_id,
+                        chat_id=self.chat_id,
+                        contact_id=self.contact_id,
+                        new_messages=['2', message_text]
+                    )
+                    logger.info(f"В сделке с ID #{self.lead_id} отправили повторное предложение слота")
+            else:
                 time = await BubulearnSlotsFetcher.get_slots(slot_id=slot_id)
+                slot_id = await GetSlotId.get_slot_id(text.value)
+                logger.info(f"В сделке с ID #{self.lead_id} выбрал время: {time}")
                 first_message = RegistrationAssistantTexts.approve_appointment_time(
                     time=time
                 )
                 await RadistonlineMessages.send_message(chat_id=self.chat_id, text=first_message)
+                logger.info(f"Отправили сообщение! Сделка #{self.lead_id}: {first_message}")
                 await SlotsCRUD.take_slot(slot_id=slot_id)
                 await LeadFetcher.change_lead_status(lead_id=self.lead_id, status_name='ВЫБРАЛИ ВРЕМЯ')
                 await TaskFetcher.set_task(lead_id=str(self.lead_id), task_text=TaskTexts.TIME_SELECTED_TEXT)
-            elif "False" in text.value or "Otkaz" in text.value:
-                tag_name = "вопрос не для нейро"
-                if "Otkaz" in text.value:
-                    tag_name = "отказ"
-                # Здесь логика неуспешного выбора времени после большого количества попыток
-                await LeadFetcher.change_lead_status(lead_id=self.lead_id, status_name='ТРЕБУЕТСЯ МЕНЕДЖЕР')
-                await TagsFetcher.add_new_tag(lead_id=str(self.lead_id), tag_name=tag_name)
-                await TaskFetcher.set_task(lead_id=str(self.lead_id), task_text=TaskTexts.NEED_MANAGER_TEXT)
-                logger.info(f"Изменили статус задачи с ID {self.lead_id} на Требуется менеджер, так как не смогли "
-                            f"договориться насчёт времени приема")
-            else:
-                await RadistonlineMessages.send_message(chat_id=self.chat_id, text=text.value)
-                # Здесь проверяем, является ли сообщение ассистента помощью с ZOOM
-                if "ноутбука/компьютера" in text.value:
-                    await RadistonlineMessages.send_image(self.chat_id, settings.ZOOM_IMAGE_URL)
+        elif "False" in text.value or "Otkaz" in text.value:
+            tag_name = "вопрос не для нейро"
+            if "Otkaz" in text.value:
+                tag_name = "отказ"
+            # Здесь логика неуспешного выбора времени после большого количества попыток
+            await LeadFetcher.change_lead_status(lead_id=self.lead_id, status_name='ТРЕБУЕТСЯ МЕНЕДЖЕР')
+            await TagsFetcher.add_new_tag(lead_id=str(self.lead_id), tag_name=tag_name)
+            await TaskFetcher.set_task(lead_id=str(self.lead_id), task_text=TaskTexts.NEED_MANAGER_TEXT)
+            logger.info(f"В сделке с ID {self.lead_id} не смогли договориться насчёт времени приема")
+        else:
+            await RadistonlineMessages.send_message(chat_id=self.chat_id, text=text.value)
+            logger.info(f"Отправили сообщение! Сделка #{self.lead_id}: {text.value}")
+            # Здесь проверяем, является ли сообщение ассистента помощью с ZOOM
+            if "ноутбука/компьютера" in text.value:
+                await RadistonlineMessages.send_image(self.chat_id, settings.ZOOM_IMAGE_URL)

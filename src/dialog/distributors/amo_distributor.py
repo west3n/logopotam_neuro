@@ -11,6 +11,7 @@ from src.api.amoCRM.custom_fields import CustomFieldsFetcher
 from src.api.amoCRM.tags import TagsFetcher
 from src.api.amoCRM.tasks import TaskFetcher
 from src.api.radistonline.chats import RadistOnlineChats
+from src.api.radistonline.messages import RadistonlineMessages
 
 from src.core.config import logger, settings
 from src.core.texts import TaskTexts
@@ -23,6 +24,44 @@ from src.orm.crud.radist_chats import ChatStepsCRUD
 from src.orm.crud.amo_contacts import AmoContactsCRUD
 
 
+async def chat_id_proceed(chat_id: int, lead_id: int, contact_id: int, survey_data: dict, segment: str):
+    await AmoLeadsCRUD.save_new_chat_id(lead_id=int(lead_id), chat_id=int(chat_id))
+
+    # Начинаем диалог разу с шага выбора слотов
+    await ChatStepsCRUD.update(chat_id=chat_id, step="registration")
+    text = (
+        'Здравствуйте! 🤗 Вы заинтересовались бесплатной диагностикой. '
+        'Это первый шаг к идеальной речи вашего ребенка!'
+        '\n\nМеня зовут Алина, я помогу вам записаться.'
+    )
+    await RadistonlineMessages.send_message(chat_id=int(chat_id), text=text)
+    await Assistant.get_first_registration_message(chat_id=chat_id)
+    logger.info(f"Отправили и сохранили первое сообщение в сделке с ID {lead_id}")
+
+    # Собираем и сохраняем данные о ребенке для БД
+    child_info = {
+        "city": survey_data["Страна/город"],
+        "child_name": survey_data["Имя ребёнка"],
+        "child_birth_date": survey_data["Дата рождения"],
+        "doctor_enquiry": survey_data["Подробнее о запросе"],
+        "diagnosis": survey_data['Диагноз (если есть)'],
+        "segment": segment,
+    }
+    try:
+        await AmoContactsCRUD.update_contact_values(
+            contact_id=contact_id,
+            update_columns=child_info
+        )
+    except DBAPIError as e:
+        child_info['child_birth_date'] = datetime.fromtimestamp(
+            survey_data["Дата рождения"])
+        await AmoContactsCRUD.update_contact_values(
+            contact_id=contact_id,
+            update_columns=child_info
+        )
+        logger.error(f"DBAPIError, LEAD ID: {lead_id}: " + str(e))
+
+
 async def proceed_new_lead(lead_id, new_status_id=None):
     # Здесь находится логика обработки новых сделок
     new_lead_data = await LeadFetcher.get_lead(lead_id=lead_id)
@@ -32,7 +71,7 @@ async def proceed_new_lead(lead_id, new_status_id=None):
         await asyncio.sleep(30)
         new_lead_data = await LeadFetcher.get_lead(lead_id=lead_id)
         contact_id = new_lead_data['_embedded']['contacts'][0]['id']
-    logger.info(f"ID контакта: {contact_id}")
+    logger.info(f"ID контакта в сделке #{lead_id}: {contact_id}")
 
     contact_data = await ContactFetcher.get_contact_by_id(contact_id)
     contact_name = contact_data['name']
@@ -41,8 +80,9 @@ async def proceed_new_lead(lead_id, new_status_id=None):
         phone_number = next(
             (cfv['values'][0]['value'] for cfv in contact_data['custom_fields_values'] if
              cfv['field_name'] == 'Телефон'), None)
-    except TypeError:
+    except TypeError as e:
         phone_number = await ContactFetcher.get_contact_number_by_company(contact_id)
+        logger.error(f"TypeError: LEAD ID: {lead_id}: " + str(e))
 
     # Удаляем лишние знаки из номера телефона
     if "Доп.информация:," in phone_number:
@@ -59,79 +99,57 @@ async def proceed_new_lead(lead_id, new_status_id=None):
         utm_source = custom_fields['utm_source']
     except (TypeError, KeyError):
         utm_source = None
-    print("utm_source: ", utm_source)
     if utm_source == 'Flocktory' or utm_source is None:
-        print("Пропускаем ожидание сборки данных по анкете")
-        logger.info(f"Пропускаем ожидание сборки данных по анкете")
+        logger.info(f"Пропускаем ожидание сборки данных по анкете для сделки #{lead_id}")
         survey_data = None
     else:
-        print("Начинаем ожидание сборки данных по анкете")
-        logger.info(f"Начинаем ожидание сборки данных по анкете")
+        logger.info(f"Начинаем ожидание сборки данных по анкете для сделки #{lead_id}")
 
         # Теперь необходимо проверить, есть ли у клиента полностью заполненный опрос, проверяя каждые 30
         # секунд пока он не заполнится или не пройдет 5 минут
         survey_data = await CustomFieldsFetcher.get_child_data(lead_id=lead_id)
-        print("Данные из анкеты: ", survey_data)
-        logger.info(f"Данные из анкеты: {survey_data}")
+        logger.info(f"Данные из анкеты в сделке #{lead_id}: {survey_data}")
         timeout = 0
         while survey_data in [{}, None] and timeout < 300:
             await asyncio.sleep(30)
             timeout += 30
-            print(f"Ожидаем заполнения анкеты в сделке #{lead_id}. Прошло {timeout} секунд.")
             logger.info(f"Ожидаем заполнения анкеты в сделке #{lead_id}. Прошло {timeout} секунд.")
             survey_data = await CustomFieldsFetcher.get_child_data(lead_id=lead_id)
-            print("Данные из анкеты после таймаута: ", survey_data)
             logger.info(f"Данные из анкеты после таймаута: {survey_data}")
             continue
     if survey_data and survey_data != {}:
         # Если опрос заполнен, нам необходимо провести первичную проверку данных
         baby_age_month, segment, for_online = await SurveyInitialCheck.get_survey_initial_check(
             survey_data)
-        print(f"Сделка #{lead_id}: Месяцы: {baby_age_month}, Сегмент: {segment}, Онлайн: {for_online}")
         logger.info(f"Сделка #{lead_id}: Месяцы: {baby_age_month}, Сегмент: {segment}, Онлайн: {for_online}")
-
         # Возраст ребёнка мы высчитываем в количестве месяцев для более надёжной проверки.
         if baby_age_month > 42 and segment != "C" and for_online:
-
-            # Проверка пройдена, создаём новый чат в Radist.Online и сохраняем chat_id в БД
-            _, chat_id = await RadistOnlineChats.create_new_chat(
-                name=name,
-                phone=phone_number
-            )
-            if chat_id:
-                await AmoLeadsCRUD.save_new_chat_id(lead_id=int(lead_id), chat_id=int(chat_id))
-
-                # Начинаем диалог разу с шага выбора слотов
-                await ChatStepsCRUD.update(chat_id=chat_id, step="registration")
-                await Assistant.get_first_registration_message(chat_id=chat_id)
-                print(f"Отправили и сохранили первое сообщение в сделке с ID {lead_id}")
-                logger.info(f"Отправили и сохранили первое сообщение в сделке с ID {lead_id}")
-
-                # Собираем и сохраняем данные о ребенке для БД
-                child_info = {
-                    "city": survey_data["Страна/город"],
-                    "child_name": survey_data["Имя ребёнка"],
-                    "child_birth_date": survey_data["Дата рождения"],
-                    "doctor_enquiry": survey_data["Подробнее о запросе"],
-                    "diagnosis": survey_data['Диагноз (если есть)'],
-                    "segment": segment,
-                }
-                try:
-                    await AmoContactsCRUD.update_contact_values(
-                        contact_id=contact_id,
-                        update_columns=child_info
+            try:
+                # Проверка пройдена, создаём новый чат в Radist.Online и сохраняем chat_id в БД
+                chat_id = await RadistOnlineChats.create_new_chat(
+                    name=name,
+                    phone=phone_number
+                )
+                if chat_id:
+                    chat_id = int(chat_id)
+                    await chat_id_proceed(chat_id, lead_id, contact_id, survey_data, segment)
+                else:
+                    # После первой неудачной попытки создания чата в Radist.Online добавляем тайм-аут и пытаемся ещё раз
+                    logger.info(f"Ошибка создания чата в сделке #{lead_id}, проблема с Radist.Online, тайм-аут: 300")
+                    await asyncio.sleep(300)
+                    chat_id = await RadistOnlineChats.create_new_chat(
+                        name=name,
+                        phone=phone_number
                     )
-                except DBAPIError:
-                    child_info['child_birth_date'] = datetime.fromtimestamp(
-                        survey_data["Дата рождения"])
-                    await AmoContactsCRUD.update_contact_values(
-                        contact_id=contact_id,
-                        update_columns=child_info
-                    )
-            else:
-                print(f"Не удалось создать чат для сделки #{lead_id} из-за проблем с Radist.Online")
-                logger.info(f"Не удалось создать чат для сделки #{lead_id} из-за проблем с Radist.Online")
-                return
+                    if chat_id:
+                        chat_id = int(chat_id)
+                        await chat_id_proceed(chat_id, lead_id, contact_id, survey_data, segment)
+                    else:
+                        logger.info(f"Повторная ошибка создания чата в сделке #{lead_id}, проблема с Radist.Online")
+                        await CustomFieldsFetcher.change_status(lead_id, phone_number)
+                        await LeadFetcher.change_lead_status(lead_id, 'В работе ( не было звонка)')
+            except Exception as e:
+                logger.error(f"Возникла ошибка при создании чата в Radist.Online: {e}")
         else:
             # Выбираем тег в зависимости от причины неудачного прохождения первичной проверки
             if baby_age_month < 42:
@@ -145,18 +163,17 @@ async def proceed_new_lead(lead_id, new_status_id=None):
             await LeadFetcher.change_lead_status(lead_id=lead_id, status_name='ТРЕБУЕТСЯ МЕНЕДЖЕР')
             await TaskFetcher.set_task(lead_id=lead_id, task_text=TaskTexts.NEED_MANAGER_TEXT)
             await TagsFetcher.add_new_tag(lead_id=lead_id, tag_name=tag_name)
-            print(f"Изменили статус задачи с ID {lead_id} на Требуется менеджер, так как сделка не "
-                  "прошла первичную проверку")
-            logger.info(f"Изменили статус задачи с ID {lead_id} на Требуется менеджер, "
-                        f"так как сделка не прошла первичную проверку")
+            logger.info(f"Сделка #{lead_id} не прошла первичную проверку, тег: {tag_name}")
     else:
-        print("НЕТ ДАННЫХ О РЕБЕНКЕ")
         # Создаём новый чат в Radist.Online и сохраняем chat_id в БД
         chat_id = await RadistOnlineChats.create_new_chat(
             name=name,
             phone=phone_number
         )
         if chat_id:
+            chat_id = int(chat_id)
+
+            # Сохраняем chat_id в БД
             await AmoLeadsCRUD.save_new_chat_id(lead_id=int(lead_id), chat_id=int(chat_id))
 
             # Здесь первый ассистент начинает работу с незаполненного опроса
@@ -166,14 +183,37 @@ async def proceed_new_lead(lead_id, new_status_id=None):
                 contact_id=contact_id,
                 new_messages="Нет данных"
             )
-            print(f"Отправили и сохранили первое сообщение в незаполненной сделке с ID {lead_id}")
             logger.info(f"Отправили и сохранили первое сообщение в незаполненной сделке с ID {lead_id}")
             # Переводим пользователя в шаг survey, в котором ассистент отвечает за заполнение опроса.
             await ChatStepsCRUD.update(chat_id=chat_id, step="survey")
         else:
-            print(f"Не удалось создать чат для сделки #{lead_id} из-за проблем с Radist.Online")
-            logger.info(f"Не удалось создать чат для сделки #{lead_id} из-за проблем с Radist.Online")
-            return
+            # После первой неудачной попытки создания чата в Radist.Online добавляем тайм-аут и пытаемся ещё раз
+            logger.info(f"Ошибка создания чата в сделке #{lead_id}, проблема с Radist.Online, тайм-аут: 300")
+            await asyncio.sleep(300)
+            chat_id = await RadistOnlineChats.create_new_chat(
+                name=name,
+                phone=phone_number
+            )
+            if chat_id:
+                chat_id = int(chat_id)
+
+                # Сохраняем chat_id в БД
+                await AmoLeadsCRUD.save_new_chat_id(lead_id=int(lead_id), chat_id=int(chat_id))
+
+                # Здесь первый ассистент начинает работу с незаполненного опроса
+                await Assistant.get_survey_response_stream(
+                    chat_id=chat_id,
+                    lead_id=lead_id,
+                    contact_id=contact_id,
+                    new_messages="Нет данных"
+                )
+                logger.info(f"Отправили и сохранили первое сообщение в незаполненной сделке с ID {lead_id}")
+                # Переводим пользователя в шаг survey, в котором ассистент отвечает за заполнение опроса.
+                await ChatStepsCRUD.update(chat_id=chat_id, step="survey")
+            else:
+                logger.info(f"Повторная ошибка создания чата в сделке #{lead_id}, проблема с Radist.Online")
+                await CustomFieldsFetcher.change_status(lead_id, phone_number)
+                await LeadFetcher.change_lead_status(lead_id, 'В работе ( не было звонка)')
 
 
 async def amo_data_processing(data):
@@ -187,8 +227,6 @@ async def amo_data_processing(data):
     try:
         # Здесь возвращаем старые имена сделкам и контактам
         contact_id = data['contacts[update][0][id]']
-        print("CHANGE CONTACT: ", data)
-        logger.info(f"CHANGE CONTACT: {data}")
         contact_renamed = await AmoContactsCRUD.get_renamed_contact(int(contact_id))
         if contact_renamed:
             lead_id = await AmoLeadsCRUD.get_lead_id_by_contact_id(contact_id=int(contact_id))
@@ -199,8 +237,7 @@ async def amo_data_processing(data):
                     await AmoLeadsCRUD.change_renamed_status(int(lead_id))
             await ContactFetcher.rename_contact(contact_id=contact_id, new_name=contact_renamed)
             await AmoContactsCRUD.changed_renamed_status(int(contact_id))
-            print(f"Контакт и сделка {lead_id} переименованы")
-            logger.info(f"Контакт и сделка {lead_id} переименованы")
+            logger.info(f"Контакт {contact_id} и сделка {lead_id} переименованы")
         else:
             pass
     except KeyError:
@@ -208,9 +245,13 @@ async def amo_data_processing(data):
         try:
             lead_id = data['leads[add][0][id]']
             pipeline_id = int(data['leads[add][0][pipeline_id]'])
-            if pipeline_id == settings.LOGOPOTAM_PIPELINE_ID:
+            new_status_id = int(data['leads[add][0][status_id]'])  # noqa
+            new_status_name = await PipelineFetcher.get_pipeline_status_name_by_id(new_status_id)
+            if pipeline_id == settings.LOGOPOTAM_PIPELINE_ID and new_status_name != "СТАРТ НЕЙРО":
+                logger.info(f"NEW LEAD: {lead_id}, {pipeline_id}, {new_status_id}, {new_status_name}")
                 await proceed_new_lead(lead_id)
         except KeyError:
+            pass
             lead_id = data['leads[status][0][id]']
             pipeline_id = int(data['leads[status][0][pipeline_id]'])
             if pipeline_id == settings.LOGOPOTAM_PIPELINE_ID:
@@ -221,4 +262,5 @@ async def amo_data_processing(data):
                     await AmoLeadsCRUD.change_lead_status(int(lead_id), new_status_id)
                 else:
                     if new_status_name == "СТАРТ НЕЙРО":
+                        logger.info(f"NEW LEAD: {lead_id}, {pipeline_id}, {new_status_id}, {new_status_name}")
                         await proceed_new_lead(lead_id, new_status_id)

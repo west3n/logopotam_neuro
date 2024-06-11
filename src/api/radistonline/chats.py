@@ -1,11 +1,10 @@
 import aiohttp
 
-from src.core.config import settings, headers
+from src.core.config import settings, headers, logger
 from src.api.radistonline.contacts import RadistOnlineContacts
 
 
 class RadistOnlineChats:
-
     @staticmethod
     async def create_new_chat(name: str, phone: str):
         """
@@ -13,11 +12,11 @@ class RadistOnlineChats:
 
         :param name: Имя пользователя
         :param phone: Номер телефона пользователя
-        :return: Текст с успешным созданием чата и его ID или текст и код ошибки
+        :return: ID созданного чата или None, если произошла ошибка
         """
         url = settings.RADIST_SUBDOMAIN_URL + "messaging/chats/"
         connection_id = settings.CONNECTION_ID
-        _, contact_id = await RadistOnlineContacts.create_contact(name, phone)
+        contact_id = await RadistOnlineContacts.create_contact(name, phone)
         data = {
             "connection_id": connection_id,
             "contact_id": contact_id,
@@ -26,10 +25,10 @@ class RadistOnlineChats:
         }
         async with aiohttp.ClientSession() as session:
             async with session.post(url=url, headers=headers.RADIST_HEADERS, json=data) as response:
+                response_json = await response.json()
                 if response.status == 200:
-                    response_json = await response.json()
-                    print("Чат успешно создан!", response_json['chat_id'])
+                    logger.info(f"Чат с номером телефона {phone} успешно создан! ID: {response_json['chat_id']}")
                     return response_json['chat_id']
                 else:
-                    print("Возникла проблема при создании чата!", await response.text())
+                    logger.error(f"Проблема при создании чата с номером телефона {phone}: {str(response_json)}")
                     return None

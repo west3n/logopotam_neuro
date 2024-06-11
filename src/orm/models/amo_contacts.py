@@ -18,12 +18,3 @@ class AmoContacts(BaseModel):
     diagnosis = Column("diagnosis", String(500))
     segment = Column("segment", String(1))
     is_renamed = Column("is_renamed", Boolean, default=False)
-
-
-class DoublesSearch(BaseModel):
-    """
-    Модель нужна для поиска дублей по номеру телефона в amoCRM
-    """
-    __tablename__ = "doubles_search"
-
-    phone_number = Column("phone_number", String(20), primary_key=True)

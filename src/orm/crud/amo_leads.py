@@ -67,8 +67,8 @@ class AmoLeadsCRUD:
                     result = await session.execute(select(AmoLeads).where(AmoLeads.lead_id == lead_id))  # noqa
                 else:
                     result = await session.execute(
-                        select(AmoLeads).where(AmoLeads.lead_id == lead_id).filter(AmoLeads.is_renamed == False)
-                    )  # noqa
+                        select(AmoLeads).where(AmoLeads.lead_id == lead_id).filter(AmoLeads.is_renamed == False)  # noqa
+                    )
                 lead: AmoLeads = result.fetchone()
                 return lead[0].lead_name if lead else None
 
@@ -157,11 +157,7 @@ class AmoLeadsCRUD:
         async_session = await get_session()
         async with async_session() as session:
             async with session.begin():
-                await session.execute(
-                    update(AmoLeads).where(AmoLeads.lead_id == lead_id).values(
-                        is_renamed=True
-                    )
-                )
+                await session.execute(update(AmoLeads).where(AmoLeads.lead_id == lead_id).values(is_renamed=True))  # noqa
             await session.commit()
 
     @staticmethod
@@ -174,9 +170,5 @@ class AmoLeadsCRUD:
         async_session = await get_session()
         async with async_session() as session:
             async with session.begin():
-                await session.execute(
-                    update(AmoLeads).where(AmoLeads.lead_id == lead_id).values(
-                        lead_name=lead_name
-                    )
-                )
+                await session.execute(update(AmoLeads).where(AmoLeads.lead_id == lead_id).values(lead_name=lead_name))  # noqa
             await session.commit()

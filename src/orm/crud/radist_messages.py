@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta
 from typing import List
 
-from sqlalchemy import select, update, and_
+from sqlalchemy import select, update, and_, func
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import aliased
 
 from src.orm.models.amo_leads import AmoLeads
 from src.orm.models.radist_chats import RadistChats
@@ -16,7 +17,7 @@ class RadistMessagesCRUD:
     """
 
     @staticmethod
-    async def save_new_message(data: dict):
+    async def save_new_message(data: dict, delay_status: str = None):
         async_session = await get_session()
         async with async_session() as session:
             send_time = data['event']['message']['created_at']
@@ -38,9 +39,21 @@ class RadistMessagesCRUD:
                     ).on_conflict_do_nothing(
                         index_elements=['message_id']
                     )
+                    if delay_status:
+                        new_message_insert_stmt = insert(RadistMessages).values(
+                            message_id=data['event']['message']['message_id'],
+                            chat_id=data['event']['chat_id'],
+                            sender='robot' if data['event']['message']['direction'] == 'outbound' else 'user',
+                            text=data['event']['message']['text']['text'],
+                            send_time=send_time,
+                            delay_status=delay_status
+                        ).on_conflict_do_nothing(
+                            index_elements=['message_id']
+                        )
                     await session.execute(new_message_insert_stmt)
                     await session.commit()
-                # This exception only works if we are trying to save an image
+
+                # Это исключение срабатывает только при попытке сохранить сообщение с картинкой
                 except KeyError:
                     pass
 
@@ -68,97 +81,94 @@ class RadistMessagesCRUD:
         async_session = await get_session()
         async with async_session() as session:
             async with session.begin():
-                stmt = (update(RadistMessages).where(RadistMessages.message_id.in_(message_ids)).values(
+                stmt = (update(RadistMessages).where(RadistMessages.message_id.in_(message_ids)).values( # noqa
                     status=new_status))
                 await session.execute(stmt)
                 await session.commit()
 
     @staticmethod
-    async def is_last_robot_message_old(chat_id: int):
+    async def get_30_minutes_delay_chats() -> List:
+        """
+        Возвращает список чатов, в которых с момента последнего сообщения от нейроменеджера прошло более 30 минут
+        """
+        thirty_minutes_ago = datetime.now() - timedelta(minutes=30)
         async_session = await get_session()
         async with async_session() as session:
             async with session.begin():
-                result = await session.execute(
-                    select(RadistMessages.send_time)
-                    .where(and_(
-                        RadistMessages.chat_id == chat_id,
-                        RadistMessages.sender == 'robot'
-                    ))
-                    .order_by(RadistMessages.send_time.desc())
-                    .limit(1)
+                LatestRadistMessages = aliased(RadistMessages)
+                subquery = (
+                    select(
+                        LatestRadistMessages.chat_id,
+                        func.max(LatestRadistMessages.send_time).label('latest_send_time')
+                    )
+                    .group_by(LatestRadistMessages.chat_id).subquery()
                 )
-                last_message_time = result.scalar_one_or_none()
-
-                if last_message_time:
-                    current_time = datetime.now()
-                    time_difference = current_time - last_message_time
-
-                    if time_difference > timedelta(hours=1):
-                        return True
-        return False
-
-    @staticmethod
-    async def change_delay_status(chat_id: int, new_status: str):
-        """
-        Изменяем статус сообщений
-        """
-        async_session = await get_session()
-        async with async_session() as session:
-            async with session.begin():
-                stmt = (update(RadistMessages).where(RadistMessages.chat_id == chat_id).values(
-                    delay_status=new_status))
-                await session.execute(stmt)
-                await session.commit()
-
-    @staticmethod
-    async def get_30_minutes_delay_chats():
-        thirty_minutes_ago = datetime.utcnow() - timedelta(minutes=30)
-        async_session = await get_session()
-        async with async_session() as session:
-            async with session.begin():
-                query = session.query(
-                    AmoLeads.lead_id,
-                    AmoLeads.chat_id,
-                    RadistChats.step
-                ).distinct(
-                    AmoLeads.lead_id,
-                    AmoLeads.chat_id,
-                    RadistChats.step
-                ).join(
-                    RadistMessages, AmoLeads.chat_id == RadistMessages.chat_id
-                ).join(
-                    RadistChats, AmoLeads.chat_id == RadistChats.chat_id
-                ).filter(
-                    RadistMessages.send_time < thirty_minutes_ago,
-                    RadistMessages.delay_status == None,  # noqa
-                    RadistMessages.sender == 'robot'
+                query = (
+                    select(
+                        AmoLeads.lead_id, AmoLeads.chat_id, RadistChats.step
+                    )
+                    .distinct()
+                    .join(
+                        RadistMessages, AmoLeads.chat_id == RadistMessages.chat_id  # noqa
+                    )
+                    .join(
+                        RadistChats, AmoLeads.chat_id == RadistChats.chat_id
+                    )
+                    .join(
+                        subquery, (RadistMessages.chat_id == subquery.c.chat_id) & (
+                                RadistMessages.send_time == subquery.c.latest_send_time)
+                    )
+                    .filter(
+                        RadistMessages.send_time < thirty_minutes_ago,
+                        RadistMessages.sender == 'robot',
+                        RadistChats.is_delay_message_sent == False
+                    )
                 )
 
-                results = query.all()
+                result = await session.execute(query)
+                results = result.all()
                 return results
 
     @staticmethod
     async def get_2hrs_delay_chats():
-        two_hours_ago = datetime.utcnow() - timedelta(hours=2)
+        """
+        Возвращает список чатов, в которых с момента последнего сообщения от нейроменеджера прошло более 2 часов
+        """
+        # здесь 90 минут вместо 120, т.к 30 минут уже прошло от сообщения, отправленного после 30-минутного молчания
+        two_hours_ago = datetime.now() - timedelta(minutes=90)
         async_session = await get_session()
-        async with (async_session() as session):
+        async with async_session() as session:
             async with session.begin():
-                query = session.query(
-                    AmoLeads.lead_id,
-                    AmoLeads.chat_id,
-                    RadistChats.step
-                ).distinct(
-                    AmoLeads.lead_id,
-                    AmoLeads.chat_id,
-                    RadistChats.step
-                ).join(
-                    RadistMessages, AmoLeads.chat_id == RadistMessages.chat_id
-                ).join(
-                    RadistChats, AmoLeads.chat_id == RadistChats.chat_id
-                ).filter(
-                    RadistMessages.send_time < two_hours_ago,
-                    RadistMessages.delay_status == '30m',
-                    RadistMessages.sender == 'robot'
+                LatestRadistMessages = aliased(RadistMessages)
+                subquery = (
+                    select(
+                        LatestRadistMessages.chat_id,
+                        func.max(LatestRadistMessages.send_time).label('latest_send_time')
+                    )
+                    .group_by(LatestRadistMessages.chat_id).subquery()
                 )
-                results = query.all()
+                query = (
+                    select(
+                        AmoLeads.lead_id, AmoLeads.chat_id, RadistChats.step
+                    )
+                    .distinct()
+                    .join(
+                        RadistMessages, AmoLeads.chat_id == RadistMessages.chat_id  # noqa
+                    )
+                    .join(
+                        RadistChats, AmoLeads.chat_id == RadistChats.chat_id
+                    )
+                    .join(
+                        subquery, (RadistMessages.chat_id == subquery.c.chat_id) & (
+                                RadistMessages.send_time == subquery.c.latest_send_time)
+                    )
+                    .filter(
+                        RadistMessages.send_time < two_hours_ago,
+                        RadistMessages.sender == 'robot',
+                        RadistChats.is_delay_message_sent == True
+                    )
+                )
+
+                result = await session.execute(query)
+                results = result.all()
                 return results

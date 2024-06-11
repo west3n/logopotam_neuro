@@ -17,4 +17,3 @@ class RadistMessages(BaseModel):
     text = Column("text", Text)
     send_time = Column("send_time", type_=TIMESTAMP(timezone=True))
     status = (Column("status", String(20), default='unanswered'))
-    delay_status = (Column("delay_status", String, nullable=True, default=None))

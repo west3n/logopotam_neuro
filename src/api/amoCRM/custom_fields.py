@@ -73,30 +73,15 @@ class CustomFieldsFetcher:
 
         :param lead_id: ID сделки
         :param child_data: Словарь с данными, полученными от клиента
-        :return:
+        :return: None
         """
         data = {'custom_fields_values': []}
         fields_list = [(field['id'], field['name']) for field in await CustomFieldsFetcher.get_available_fields()]
 
-        field_mapping = {
-            'child_name': 'Имя ребёнка',
-            'child_birth_date': 'Дата рождения',
-            'city': 'Страна/город',
-            'doctor_enquiry': 'Подробнее о запросе',
-            'diagnosis': 'Диагноз (если есть)'
-        }
-
-        for field, field_name in field_mapping.items():
-            if field in child_data:
-                field_id = None
-                for item in fields_list:
-                    if item[1] == field_name:
-                        field_id = item[0]
-                        break
-
-                if field_id is not None:
-                    # Переводим datetime в timestamp, чтобы записать в amoCRM
-                    field_value = child_data[field] if field_name != 'Дата рождения' else int(child_data[field].timestamp())  # noqa
+        for field_name, field_value in child_data.items():
+            for item in fields_list:
+                if item[1] == field_name:
+                    field_id = item[0]
                     data['custom_fields_values'].append({
                         'field_id': field_id,
                         'field_name': field_name,
@@ -106,7 +91,85 @@ class CustomFieldsFetcher:
         async with aiohttp.ClientSession() as session:
             async with session.patch(url=url, headers=headers.AMO_HEADERS, json=data) as response:
                 if response.status == 200:
-                    return await CustomFieldsFetcher.get_survey_lead_fields(str(lead_id))
+                    logger.info(f"Данные анкеты в сделке {lead_id} успешно записаны в amoCRM")
                 else:
-                    print("Ошибка при записи данных в amoCRM: " + str(await response.json()))
-                    logger.info(f"Ошибка при записи данных в amoCRM: {str(await response.json())}")
+                    logger.error(f"Ошибка при записи данных в сделке {lead_id}: {str(await response.json())}")
+
+    @staticmethod
+    async def message_counter(lead_id: int):
+        """
+        Добавляем + 1 к количеству сообщений в сделке
+        :param lead_id: ID сделки
+        :return: None
+        """
+        url = settings.AMO_SUBDOMAIN_URL + '/api/v4/leads/' + str(lead_id) + '?with=contacts'
+        field_id = 777980  # ID поля "Нейроменеджер кол-во сообщений"
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url=url, headers=headers.AMO_HEADERS) as response:
+                response_json = await response.json()
+                fields_list = response_json['custom_fields_values']
+                value = 1
+                field_ids = [field['field_id'] for field in fields_list]
+                if field_id in field_ids:
+                    value = \
+                    [int(field['values'][0]['value']) + 1 for field in fields_list if field['field_id'] == field_id][0]
+                data = {'custom_fields_values': [{'field_id': field_id, 'values': [{'value': str(value)}]}]}
+                async with session.patch(url=url, headers=headers.AMO_HEADERS, json=data) as new_response:
+                    if new_response.status == 200:
+                        logger.info(f"Кол-во сообщений в сделке {lead_id} успешно обновлено. Новое значение: {value}")
+                    else:
+                        logger.error(
+                            f"Ошибка при обновлении кол-ва сообщений в сделке {lead_id}: {str(await new_response.json())}")
+
+    @staticmethod
+    async def change_status(lead_id: int, phone_number: str = None):
+        """
+        В поле "Нейроменеджер статус" обрабатываемой заявки записываем значение:
+        "Ошибка инициализации чата для номера: [НОМЕР]",
+        где [НОМЕР] - номер телефона по которому была попытка инициализации чата
+        :param lead_id: ID сделки
+        :param phone_number: Номер телефона
+        :return: None
+        """
+        if phone_number is None:
+            value = "Повторное предложение слота"
+        else:
+            value = f"Ошибка инициализации чата для номера: {phone_number}"
+        url = settings.AMO_SUBDOMAIN_URL + '/api/v4/leads/' + str(lead_id) + '?with=contacts'
+        field_id = 777978  # ID поля "Нейроменеджер статус"
+        data = {
+            'custom_fields_values': [
+                {
+                    'field_id': field_id,
+                    'values': [{'value': value}]
+                }
+            ]
+        }
+        async with aiohttp.ClientSession() as session:
+            async with session.patch(url=url, headers=headers.AMO_HEADERS, json=data) as response:
+                if response.status == 200:
+                    logger.info(f"Поле 'Нейроменеджер статус' в сделке {lead_id} успешно обновлено")
+                else:
+                    logger.error(
+                        f"Ошибка при обновлении поля 'Нейроменеджер статус' в сделке {lead_id}: {str(await response.json())}")
+
+    @staticmethod
+    async def get_777978_status_value(lead_id: int):
+        """
+        Возвращает значение поля "Нейроменеджер статус" из анкеты в конкретной сделке
+        :param lead_id: ID сделки в строковом формате
+        :return: Значение статуса в конкретной сделке
+        """
+        url = settings.AMO_SUBDOMAIN_URL + '/api/v4/leads/' + str(lead_id) + '?with=contacts'
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url=url, headers=headers.AMO_HEADERS) as response:
+                response_json = await response.json()
+                fields_list = response_json['custom_fields_values']
+                field_ids = [field['field_id'] for field in fields_list]
+                if 777978 in field_ids:
+                    field_value = [field['values'][0]['value'] for field in fields_list if field['field_id'] == 777978][
+                        0]
+                    return field_value
+                else:
+                    return None

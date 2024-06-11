@@ -1,8 +1,6 @@
-import asyncio
-
 import aiohttp
 
-from src.core.config import settings, headers
+from src.core.config import settings, headers, logger
 
 
 class RadistOnlineContacts:
@@ -28,19 +26,13 @@ class RadistOnlineContacts:
         :return: Текст с успешным созданием контакта и его ID или текст и код ошибки
         """
         url = settings.RADIST_SUBDOMAIN_URL + '/contacts/'
-        data = {
-            'name': name,
-            'phones': [
-                {
-                    'type': "work",
-                    'value': phone
-                }
-            ]
-        }
+        data = {'name': name, 'phones': [{'type': "work", 'value': phone}]}
         async with aiohttp.ClientSession() as session:
             async with session.post(url=url, headers=headers.RADIST_HEADERS, json=data) as response:
+                response_json = await response.json()
                 if response.status == 200:
-                    response_json = await response.json()
-                    return "Контакт успешно создан!", response_json['id']
+                    logger.info(f"Контакт с номером телефона {phone} успешно создан! ID: {response_json['id']}")
+                    return response_json['id']
                 else:
-                    return "Возникла проблема при создании контакта!" + await response.text(), None
+                    logger.error(f"Проблема при создании контакта с номером телефона {phone}: {str(response_json)}")
+                    return None

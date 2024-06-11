@@ -1,10 +1,7 @@
-import asyncio
-
 import aiohttp
 
 from src.api.amoCRM.pipelines import PipelineFetcher
-from src.core.config import settings, headers
-from src.orm.crud.amo_statuses import AmoStatusesCRUD
+from src.core.config import settings, headers, logger
 
 
 class LeadFetcher:
@@ -61,9 +58,9 @@ class LeadFetcher:
         async with aiohttp.ClientSession() as session:
             async with session.patch(url=url, headers=headers.AMO_HEADERS, json=data) as response:
                 if response.status == 200:
-                    return "Имя изменено успешно!"
+                    logger.info(f"Имя лида {lead_id} успешно изменено. Новое имя: {new_name}")
                 else:
-                    return "Возникла проблема при изменении имени!\n" + await response.text()
+                    logger.error(f"Ошибка при изменении имени лида {lead_id}: {str(await response.json())}")
 
     @staticmethod
     async def change_lead_status(lead_id: int, status_name: str):
@@ -85,8 +82,8 @@ class LeadFetcher:
             async with (aiohttp.ClientSession() as session):
                 async with session.patch(url=url, headers=headers.AMO_HEADERS, json=data) as response:
                     if response.status == 200:
-                        return "Статус изменен успешно!", status_id
+                        logger.info(f"Статус лида {lead_id} успешно изменен. Новый статус: {status_name}")
                     else:
-                        return "Возникла проблема при изменении статуса!\n" + await response.text()
+                        logger.error(f"Ошибка при изменении статуса лида {lead_id}: {str(await response.json())}")
         else:
-            return f"Данного статуса не существует! Доступные варианты:\n{', '.join(available_statuses)}"
+            logger.error(f"Статус {status_name} не найден. Доступные статусы: {available_statuses}")
