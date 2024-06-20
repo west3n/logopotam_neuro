@@ -18,29 +18,34 @@ class RadistonlineMessages:
         :return: Текст, сообщающий об успешной отправке сообщения (или кода с текстом ошибки)
         """
         lead_id = await AmoLeadsCRUD.get_value_by_chat_id(chat_id, 'lead_id')
-        status_id = await LeadFetcher.get_lead_status_id_by_lead_id(str(lead_id))
+        if lead_id:
+            status_id = await LeadFetcher.get_lead_status_id_by_lead_id(str(lead_id))
 
-        # Если статус сделки СТАРТ НЕЙРО
-        if status_id == 66505833:
-            url = settings.RADIST_SUBDOMAIN_URL + 'messaging/messages/'
-            connection_id = settings.CONNECTION_ID
-            data = {
-                "connection_id": connection_id,
-                "chat_id": chat_id,
-                "mode": "async",
-                "message_type": "text",
-                "text": {
-                    "text": text
+            # Если статус сделки СТАРТ НЕЙРО
+            if status_id == 66505833:
+                url = settings.RADIST_SUBDOMAIN_URL + 'messaging/messages/'
+                connection_id = settings.CONNECTION_ID
+                data = {
+                    "connection_id": connection_id,
+                    "chat_id": chat_id,
+                    "mode": "async",
+                    "message_type": "text",
+                    "text": {
+                        "text": text
+                    }
                 }
-            }
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url=url, headers=headers.RADIST_HEADERS, json=data) as response:
-                    if response.status == 200:
-                        await CustomFieldsFetcher.message_counter(lead_id)
-                    else:
-                        logger.error(f"Ошибка при отправке сообщения в чат #{chat_id}: {str(await response.json())}")
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(url=url, headers=headers.RADIST_HEADERS, json=data) as response:
+                        response_json = await response.json()
+                        if response.status == 200:
+                            await CustomFieldsFetcher.message_counter(lead_id)
+                        else:
+                            logger.error(
+                                f"Ошибка при отправке сообщения в сделке #{lead_id}: {str(response_json)}")
+            else:
+                logger.info(f"Не отправляем сообщение в сделке #{lead_id} потому что статус сделки не СТАРТ НЕЙРО")
         else:
-            logger.info(f"Не отправляем сообщение в чат #{chat_id} потому что статус сделки не СТАРТ НЕЙРО")
+            logger.info(f"Не отправляем сообщение потому что нет ID сделки для чата #{chat_id}")
 
     @staticmethod
     async def send_image(chat_id: int, image_url: str):
@@ -68,4 +73,4 @@ class RadistonlineMessages:
                 if response.status == 200:
                     logger.info(f"Картинка успешно отправлена! Чат #{chat_id}")
                 else:
-                    logger.error(f"Ошибка при отправке картинки в чат #{chat_id}! {str(await response.json())}")
+                    logger.error(f"Ошибка при отправке картинки в чат #{chat_id}! {str(response)}")

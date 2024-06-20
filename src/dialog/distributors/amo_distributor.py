@@ -149,7 +149,7 @@ async def proceed_new_lead(lead_id, new_status_id=None):
                         await CustomFieldsFetcher.change_status(lead_id, phone_number)
                         await LeadFetcher.change_lead_status(lead_id, 'В работе ( не было звонка)')
             except Exception as e:
-                logger.error(f"Возникла ошибка при создании чата в Radist.Online: {e}")
+                logger.error(f"Возникла ошибка при создании чата в Radist.Online: {e}. Сделка #{lead_id}")
         else:
             # Выбираем тег в зависимости от причины неудачного прохождения первичной проверки
             if baby_age_month < 42:
@@ -166,30 +166,7 @@ async def proceed_new_lead(lead_id, new_status_id=None):
             logger.info(f"Сделка #{lead_id} не прошла первичную проверку, тег: {tag_name}")
     else:
         # Создаём новый чат в Radist.Online и сохраняем chat_id в БД
-        chat_id = await RadistOnlineChats.create_new_chat(
-            name=name,
-            phone=phone_number
-        )
-        if chat_id:
-            chat_id = int(chat_id)
-
-            # Сохраняем chat_id в БД
-            await AmoLeadsCRUD.save_new_chat_id(lead_id=int(lead_id), chat_id=int(chat_id))
-
-            # Здесь первый ассистент начинает работу с незаполненного опроса
-            await Assistant.get_survey_response_stream(
-                chat_id=chat_id,
-                lead_id=lead_id,
-                contact_id=contact_id,
-                new_messages="Нет данных"
-            )
-            logger.info(f"Отправили и сохранили первое сообщение в незаполненной сделке с ID {lead_id}")
-            # Переводим пользователя в шаг survey, в котором ассистент отвечает за заполнение опроса.
-            await ChatStepsCRUD.update(chat_id=chat_id, step="survey")
-        else:
-            # После первой неудачной попытки создания чата в Radist.Online добавляем тайм-аут и пытаемся ещё раз
-            logger.info(f"Ошибка создания чата в сделке #{lead_id}, проблема с Radist.Online, тайм-аут: 300")
-            await asyncio.sleep(300)
+        try:
             chat_id = await RadistOnlineChats.create_new_chat(
                 name=name,
                 phone=phone_number
@@ -199,7 +176,7 @@ async def proceed_new_lead(lead_id, new_status_id=None):
 
                 # Сохраняем chat_id в БД
                 await AmoLeadsCRUD.save_new_chat_id(lead_id=int(lead_id), chat_id=int(chat_id))
-
+                await ChatStepsCRUD.update(chat_id=chat_id, step="survey")
                 # Здесь первый ассистент начинает работу с незаполненного опроса
                 await Assistant.get_survey_response_stream(
                     chat_id=chat_id,
@@ -209,11 +186,35 @@ async def proceed_new_lead(lead_id, new_status_id=None):
                 )
                 logger.info(f"Отправили и сохранили первое сообщение в незаполненной сделке с ID {lead_id}")
                 # Переводим пользователя в шаг survey, в котором ассистент отвечает за заполнение опроса.
-                await ChatStepsCRUD.update(chat_id=chat_id, step="survey")
             else:
-                logger.info(f"Повторная ошибка создания чата в сделке #{lead_id}, проблема с Radist.Online")
-                await CustomFieldsFetcher.change_status(lead_id, phone_number)
-                await LeadFetcher.change_lead_status(lead_id, 'В работе ( не было звонка)')
+                # После первой неудачной попытки создания чата в Radist.Online добавляем тайм-аут и пытаемся ещё раз
+                logger.info(f"Ошибка создания чата в сделке #{lead_id}, проблема с Radist.Online, тайм-аут: 300")
+                await asyncio.sleep(300)
+                chat_id = await RadistOnlineChats.create_new_chat(
+                    name=name,
+                    phone=phone_number
+                )
+                if chat_id:
+                    chat_id = int(chat_id)
+
+                    # Сохраняем chat_id в БД
+                    await AmoLeadsCRUD.save_new_chat_id(lead_id=int(lead_id), chat_id=int(chat_id))
+                    await ChatStepsCRUD.update(chat_id=chat_id, step="survey")
+                    # Здесь первый ассистент начинает работу с незаполненного опроса
+                    await Assistant.get_survey_response_stream(
+                        chat_id=chat_id,
+                        lead_id=lead_id,
+                        contact_id=contact_id,
+                        new_messages="Нет данных"
+                    )
+                    logger.info(f"Отправили и сохранили первое сообщение в незаполненной сделке с ID {lead_id}")
+                    # Переводим пользователя в шаг survey, в котором ассистент отвечает за заполнение опроса.
+                else:
+                    logger.info(f"Повторная ошибка создания чата в сделке #{lead_id}, проблема с Radist.Online")
+                    await CustomFieldsFetcher.change_status(lead_id, phone_number)
+                    await LeadFetcher.change_lead_status(lead_id, 'В работе ( не было звонка)')
+        except Exception as e:
+            logger.error(f"Возникла ошибка при создании чата в Radist.Online: {e}. Сделка #{lead_id}")
 
 
 async def amo_data_processing(data):
@@ -242,16 +243,23 @@ async def amo_data_processing(data):
             pass
     except KeyError:
         # Здесь обрабатываем новую задачу в зависимости от выбранного вебхука и воронки
+        await asyncio.sleep(60)
         try:
             lead_id = data['leads[add][0][id]']
             pipeline_id = int(data['leads[add][0][pipeline_id]'])
-            new_status_id = int(data['leads[add][0][status_id]'])  # noqa
-            new_status_name = await PipelineFetcher.get_pipeline_status_name_by_id(new_status_id)
-            if pipeline_id == settings.LOGOPOTAM_PIPELINE_ID and new_status_name != "СТАРТ НЕЙРО":
-                logger.info(f"NEW LEAD: {lead_id}, {pipeline_id}, {new_status_id}, {new_status_name}")
-                await proceed_new_lead(lead_id)
+            if pipeline_id == settings.LOGOPOTAM_PIPELINE_ID:
+                new_status_id = int(data['leads[add][0][status_id]'])  # noqa
+                new_status_name = await PipelineFetcher.get_pipeline_status_name_by_id(new_status_id)
+                if new_status_name != "СТАРТ НЕЙРО":
+                    await LeadFetcher.change_lead_status(lead_id=lead_id, status_name='СТАРТ НЕЙРО')
+                    logger.info(f"Новая сделка: {lead_id}. Переименовали статус сделки на СТАРТ НЕЙРО")
+                    await proceed_new_lead(lead_id)
+                else:
+                    logger.info(f"Новая сделка #{lead_id} появилась в статусе СТАРТ НЕЙРО, пропускаем ее")
+            else:
+                logger.info(f"Новая сделка #{lead_id} не относится к воронке Логопотам")
+
         except KeyError:
-            pass
             lead_id = data['leads[status][0][id]']
             pipeline_id = int(data['leads[status][0][pipeline_id]'])
             if pipeline_id == settings.LOGOPOTAM_PIPELINE_ID:
@@ -264,3 +272,6 @@ async def amo_data_processing(data):
                     if new_status_name == "СТАРТ НЕЙРО":
                         logger.info(f"NEW LEAD: {lead_id}, {pipeline_id}, {new_status_id}, {new_status_name}")
                         await proceed_new_lead(lead_id, new_status_id)
+            else:
+                logger.info(f"Новая сделка #{lead_id} не относится к воронке Логопотам")
+                pass

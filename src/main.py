@@ -10,7 +10,7 @@ from src.dialog.distributors.radist_distributor import radist_data_processing
 
 from src.core.scheduler import send_30_min_delay_messages, change_status_2hrs_delay_messages
 from src.orm.crud.slots import SlotsCRUD
-
+from src.orm.crud.radist_messages import RadistMessagesCRUD
 app = Quart(__name__)
 
 
@@ -53,9 +53,10 @@ async def start_scheduler():
     3. Смена статусов сделок при 2-х часовом молчании
     """
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(SlotsCRUD.update_slots, 'interval', seconds=50)
-    scheduler.add_job(send_30_min_delay_messages, 'interval', seconds=80)
-    scheduler.add_job(change_status_2hrs_delay_messages, 'interval', seconds=70)
+    scheduler.add_job(RadistMessagesCRUD.delete_all_yesterday_messages, 'cron', hour=22)
+    scheduler.add_job(SlotsCRUD.update_slots, 'interval', seconds=60)
+    scheduler.add_job(send_30_min_delay_messages, 'interval', seconds=75)
+    scheduler.add_job(change_status_2hrs_delay_messages, 'interval', seconds=90)
     scheduler.start()
 
 

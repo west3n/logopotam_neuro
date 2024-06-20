@@ -1,5 +1,6 @@
 import datetime
 
+from src.core.config import logger
 from src.orm.crud.slots import SlotsCRUD
 
 now = datetime.datetime.now().strftime('%Y-%m-%d')
@@ -86,9 +87,10 @@ class SlotsTexts:
     @staticmethod
     async def slot_validation_text():
         _, slots = await SlotsCRUD.read_slots()
+        logger.info(f"Вывод списка слотов для сделки: {slots}")
         return (
-            f"Тебе нужно вернуть ID слота из списка в зависимости от даты, которую ты получаешь"
-            f"\n\nВот список слотов:\n{slots}"
+            f"Тебе нужно вернуть ID слота из списка в зависимости от даты и времени, которую ты получаешь"
+            f"\n\nВот список слотов:\n{slots}. Если такого слота нет, верни None"
         )
 
 

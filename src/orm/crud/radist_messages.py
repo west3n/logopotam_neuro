@@ -1,7 +1,9 @@
+import asyncio
 from datetime import datetime, timedelta
 from typing import List
 
-from sqlalchemy import select, update, and_, func
+import pytz
+from sqlalchemy import select, update, and_, func, delete
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import aliased
 
@@ -172,3 +174,18 @@ class RadistMessagesCRUD:
                 result = await session.execute(query)
                 results = result.all()
                 return results
+
+    @staticmethod
+    async def delete_all_yesterday_messages():
+        timezone = pytz.UTC
+        now = datetime.now(timezone)
+        yesterday = now - timedelta(days=1)
+
+        async_session = await get_session()
+        async with async_session() as session:
+            async with session.begin():
+                query = (
+                    delete(RadistMessages)
+                    .where(RadistMessages.send_time < yesterday) # noqa
+                )
+                await session.execute(query)

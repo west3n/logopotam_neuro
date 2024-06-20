@@ -1,3 +1,4 @@
+import traceback
 import instructor
 import decouple
 import logging
@@ -127,6 +128,7 @@ class CustomLogger:
         self.logger.warning(message)
 
     def error(self, message):
+        message = f"{message}\n{traceback.format_exc()}"
         self.logger.error(message)
 
     def critical(self, message):

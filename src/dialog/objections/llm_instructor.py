@@ -14,11 +14,44 @@ instructor_client = openai_clients.OPENAI_INSTRUCTOR_CLIENT
 instructor_async_client = openai_clients.OPENAI_ASYNC_INSTRUCTOR_CLIENT
 
 
+def parse_date(date_str):
+    """
+    Функция для приведения даты в нужный формат (%Y-%m-%d).
+
+    :param date_str: str дата в виде строки.
+    :return: str дата в формате %Y-%m-%d или None, если не удалось преобразовать.
+    """
+    # Возможные форматы дат
+    date_formats = [
+        "%d.%m.%Y", "%d/%m/%Y", "%d-%m-%Y",
+        "%Y.%m.%d", "%Y/%m/%d", "%Y-%m-%d",
+        "%m.%d.%Y", "%m/%d/%Y", "%m-%d-%Y",
+        "%d %b %Y", "%d %B %Y", "%b %d, %Y", "%B %d, %Y"
+    ]
+    try:
+        # Попытка парсинга в формате ISO
+        return datetime.fromisoformat(date_str).strftime('%Y-%m-%d')
+    except ValueError:
+        pass
+
+    for fmt in date_formats:
+        try:
+            return datetime.strptime(date_str, fmt).strftime('%Y-%m-%d')
+        except ValueError:
+            pass
+
+    logger.error(f"Ошибка в формате даты рождения: Невозможно преобразовать {date_str}")
+    return None
+
+
 class JSONChecker(BaseModel):
-    json_dict: dict = Field(description=ObjectionsCheckerTexts.IS_JSON_DESCRIPTION)
+    """
+    Инструктор для извлечения данных из JSON
+    """
+    json_dict: Optional[dict] = Field(description=ObjectionsCheckerTexts.IS_JSON_DESCRIPTION)
 
     @field_validator('json_dict')
-    def json_validator(cls, values): # noqa
+    def json_validator(cls, values):  # noqa
         json_dict = ast.literal_eval(values) if isinstance(values, str) else values
         new_dict = {}
         for key, value in json_dict.items():
@@ -41,7 +74,7 @@ class JSONChecker(BaseModel):
         message_text: JSONChecker = await instructor_async_client.chat.completions.create(
             model="gpt-4o",
             response_model=JSONChecker,
-            max_retries=15,
+            max_retries=20,
             messages=[
                 {
                     "role": "user",
@@ -50,6 +83,43 @@ class JSONChecker(BaseModel):
             ],
         )
         return message_text.json_dict
+
+
+class SurveyCollector(BaseModel):
+    """
+    Это инструктор для сбора данных по анкете пользователя
+    """
+    name: str = Field(description="значение поля Имя")
+    birth_date: str = Field(description="значение поля Дата Рождения")
+    city: str = Field(description="значение поля Город")
+    doctor_enquiry: str = Field(description="значение поля Подробнее о запросе")
+    diagnosis: str = Field(description="значение поля Диагноз (если есть)")
+
+    @staticmethod
+    async def create_dict(survey_data) -> dict:
+        survey_dict = {
+            "Имя ребёнка": survey_data.name,
+            "Дата рождения": int(pd.to_datetime(survey_data.birth_date).timestamp()),
+            "Страна/город": survey_data.city,
+            "Подробнее о запросе": survey_data.doctor_enquiry,
+            "Диагноз (если есть)": survey_data.diagnosis
+        }
+        return survey_dict
+
+    @staticmethod
+    async def get_survey_data(message_text: str) -> dict:
+        survey_data: SurveyCollector = await instructor_async_client.chat.completions.create(
+            model="gpt-4o",
+            response_model=SurveyCollector,
+            max_retries=20,
+            messages=[
+                {
+                    "role": "user",
+                    "content": message_text
+                },
+            ],
+        )
+        return await SurveyCollector.create_dict(survey_data)
 
 
 class SurveyInitialCheck(BaseModel):
@@ -94,10 +164,7 @@ class SurveyInitialCheck(BaseModel):
             survey_data['Дата рождения'] = datetime.fromtimestamp(survey_data['Дата рождения']).strftime('%Y-%m-%d')
         elif isinstance(survey_data['Дата рождения'], str):
             # Ensure the date string is in the correct format
-            try:
-                survey_data['Дата рождения'] = datetime.fromisoformat(survey_data['Дата рождения']).strftime('%Y-%m-%d')
-            except ValueError as e:
-                logger.error(f"Ошибка в формате даты рождения: {e}. Анкета: {str(survey_data)}")
+            survey_data['Дата рождения'] = parse_date(survey_data['Дата рождения'])
 
         answer_str = ', '.join(f"{key}: {value}" for key, value in survey_data.items())
         survey_initial_check: SurveyInitialCheck = await instructor_async_client.chat.completions.create(
@@ -117,7 +184,7 @@ class SurveyInitialCheck(BaseModel):
 
 class GetSlotId(BaseModel):
     """Инструктор нужен для получения ID слота из сообщения ассистента"""
-    slot_id: str = Field(description=asyncio.run(SlotsTexts.slot_validation_text()))
+    slot_id: Optional[str] = Field(description=asyncio.run(SlotsTexts.slot_validation_text()))
 
     @field_validator("slot_id")
     def not_none(cls, value):  # noqa

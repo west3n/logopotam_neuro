@@ -18,7 +18,7 @@ async def radist_data_processing(data):
         message_text = data['event']['message']['text']['text']
     except KeyError:
         message_text = ''
-    if data['event']['message']['direction'] == 'inbound':
+    if data['event']['message']['direction'] == 'inbound' and data['event']['message']['message_type'] == 'text':
         # Сохраняем входящее сообщение в БД
         chat_id = data['event']['chat_id']
         try:
