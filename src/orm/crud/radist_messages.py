@@ -1,8 +1,8 @@
-import asyncio
+import pytz
+
 from datetime import datetime, timedelta
 from typing import List
 
-import pytz
 from sqlalchemy import select, update, and_, func, delete
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import aliased
@@ -89,11 +89,11 @@ class RadistMessagesCRUD:
                 await session.commit()
 
     @staticmethod
-    async def get_30_minutes_delay_chats() -> List:
+    async def get_10_minutes_delay_chats() -> List:
         """
-        Возвращает список чатов, в которых с момента последнего сообщения от нейроменеджера прошло более 30 минут
+        Возвращает список чатов, в которых с момента последнего сообщения от нейроменеджера прошло более 10 минут
         """
-        thirty_minutes_ago = datetime.now() - timedelta(minutes=30)
+        ten_minutes_ago = datetime.now() - timedelta(minutes=10)
         async_session = await get_session()
         async with async_session() as session:
             async with session.begin():
@@ -121,7 +121,7 @@ class RadistMessagesCRUD:
                                 RadistMessages.send_time == subquery.c.latest_send_time)
                     )
                     .filter(
-                        RadistMessages.send_time < thirty_minutes_ago,
+                        RadistMessages.send_time < ten_minutes_ago,
                         RadistMessages.sender == 'robot',
                         RadistChats.is_delay_message_sent == False
                     )
@@ -132,12 +132,12 @@ class RadistMessagesCRUD:
                 return results
 
     @staticmethod
-    async def get_2hrs_delay_chats():
+    async def get_15_minutes_delay_chats():
         """
-        Возвращает список чатов, в которых с момента последнего сообщения от нейроменеджера прошло более 2 часов
+        Возвращает список чатов, в которых с момента последнего сообщения от нейроменеджера прошло более 15 минут
         """
-        # здесь 90 минут вместо 120, т.к 30 минут уже прошло от сообщения, отправленного после 30-минутного молчания
-        two_hours_ago = datetime.now() - timedelta(minutes=90)
+        # здесь 5 минут вместо 15, т.к 10 минут уже прошло от сообщения, отправленного после 10-минутного молчания
+        two_hours_ago = datetime.now() - timedelta(minutes=5)
         async_session = await get_session()
         async with async_session() as session:
             async with session.begin():

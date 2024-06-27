@@ -1,7 +1,6 @@
 import aiohttp
 
 from src.core.config import settings, headers, logger
-from src.dialog.objections.llm_instructor import parse_date
 
 
 class CustomFieldsFetcher:
@@ -80,8 +79,6 @@ class CustomFieldsFetcher:
         fields_list = [(field['id'], field['name']) for field in await CustomFieldsFetcher.get_available_fields()]
 
         for field_name, field_value in child_data.items():
-            if field_name == 'Дата рождения':
-                field_value = parse_date(field_value)
             for item in fields_list:
                 if item[1] == field_name:
                     field_id = item[0]
@@ -136,17 +133,18 @@ class CustomFieldsFetcher:
                     logger.error(f"Ошибка при обновлении кол-ва сообщений в сделке {lead_id}: {str(response_json)}")
 
     @staticmethod
-    async def change_status(lead_id: int, phone_number: str = None):
+    async def change_status(lead_id: int, phone_number: str = None, text: str = None):
         """
         В поле "Нейроменеджер статус" обрабатываемой заявки записываем значение:
         "Ошибка инициализации чата для номера: [НОМЕР]",
         где [НОМЕР] - номер телефона по которому была попытка инициализации чата
+        :param text: Текст статуса
         :param lead_id: ID сделки
         :param phone_number: Номер телефона
         :return: None
         """
         if phone_number is None:
-            value = "Повторное предложение слота"
+            value = text
         else:
             value = f"Ошибка инициализации чата для номера: {phone_number}"
         url = settings.AMO_SUBDOMAIN_URL + '/api/v4/leads/' + str(lead_id) + '?with=contacts'
@@ -169,7 +167,7 @@ class CustomFieldsFetcher:
                         f"Ошибка при обновлении поля 'Нейроменеджер статус' в сделке {lead_id}: {str(response_json)}")
 
     @staticmethod
-    async def get_777978_status_value(lead_id: int):
+    async def get_neuromanager_status_value(lead_id: int):
         """
         Возвращает значение поля "Нейроменеджер статус" из анкеты в конкретной сделке
         :param lead_id: ID сделки в строковом формате
@@ -184,8 +182,8 @@ class CustomFieldsFetcher:
                     field_ids = [field['field_id'] for field in fields_list]
                     if 777978 in field_ids:
                         field_value = \
-                        [field['values'][0]['value'] for field in fields_list if field['field_id'] == 777978][
-                            0]
+                            [field['values'][0]['value'] for field in fields_list if field['field_id'] == 777978][
+                                0]
                     else:
                         field_value = None
                     logger.info(f"Поле 'Нейроменеджер статус' в сделке {lead_id} успешно получено: {field_value}")

@@ -1,7 +1,5 @@
 import asyncio
 
-from datetime import datetime
-from sqlalchemy.exc import DBAPIError
 from werkzeug.datastructures import ImmutableMultiDict
 
 from src.api.amoCRM.leads import LeadFetcher
@@ -14,7 +12,7 @@ from src.api.radistonline.chats import RadistOnlineChats
 from src.api.radistonline.messages import RadistonlineMessages
 
 from src.core.config import logger, settings
-from src.core.texts import TaskTexts
+from src.core.texts import TaskTexts, ImpassableSurveyTexts
 
 from src.dialog.objections.assistant import Assistant
 from src.dialog.objections.llm_instructor import SurveyInitialCheck
@@ -24,7 +22,7 @@ from src.orm.crud.radist_chats import ChatStepsCRUD
 from src.orm.crud.amo_contacts import AmoContactsCRUD
 
 
-async def chat_id_proceed(chat_id: int, lead_id: int, contact_id: int, survey_data: dict, segment: str):
+async def chat_id_proceed(chat_id: int, lead_id: int):
     await AmoLeadsCRUD.save_new_chat_id(lead_id=int(lead_id), chat_id=int(chat_id))
 
     # Начинаем диалог разу с шага выбора слотов
@@ -38,28 +36,38 @@ async def chat_id_proceed(chat_id: int, lead_id: int, contact_id: int, survey_da
     await Assistant.get_first_registration_message(chat_id=chat_id)
     logger.info(f"Отправили и сохранили первое сообщение в сделке с ID {lead_id}")
 
-    # Собираем и сохраняем данные о ребенке для БД
-    child_info = {
-        "city": survey_data["Страна/город"],
-        "child_name": survey_data["Имя ребёнка"],
-        "child_birth_date": survey_data["Дата рождения"],
-        "doctor_enquiry": survey_data["Подробнее о запросе"],
-        "diagnosis": survey_data['Диагноз (если есть)'],
-        "segment": segment,
-    }
+
+async def impassable_survey_proceed(name: str, phone_number: str, lead_id: int, survey_data: dict):
+    text = await ImpassableSurveyTexts.impassable_survey(survey_data=survey_data)
     try:
-        await AmoContactsCRUD.update_contact_values(
-            contact_id=contact_id,
-            update_columns=child_info
+        # Cоздаём новый чат в Radist.Online и сохраняем chat_id в БД
+        chat_id = await RadistOnlineChats.create_new_chat(
+            name=name,
+            phone=phone_number
         )
-    except DBAPIError as e:
-        child_info['child_birth_date'] = datetime.fromtimestamp(
-            survey_data["Дата рождения"])
-        await AmoContactsCRUD.update_contact_values(
-            contact_id=contact_id,
-            update_columns=child_info
-        )
-        logger.error(f"DBAPIError, LEAD ID: {lead_id}: " + str(e))
+        if chat_id:
+            chat_id = int(chat_id)
+            await AmoLeadsCRUD.save_new_chat_id(lead_id=int(lead_id), chat_id=int(chat_id))
+            await RadistonlineMessages.send_message(chat_id=int(chat_id), text=text)
+            logger.info(f"Отправили и сохранили первое сообщение в непроходной сделке с ID {lead_id}")
+        else:
+            # После первой неудачной попытки создания чата в Radist.Online добавляем тайм-аут и пытаемся ещё раз
+            logger.info(f"Ошибка создания чата в сделке #{lead_id}, проблема с Radist.Online, тайм-аут: 300")
+            await asyncio.sleep(300)
+            chat_id = await RadistOnlineChats.create_new_chat(
+                name=name,
+                phone=phone_number
+            )
+            if chat_id:
+                chat_id = int(chat_id)
+                await RadistonlineMessages.send_message(chat_id=int(chat_id), text=text)
+                logger.info(f"Отправили и сохранили первое сообщение в непроходной сделке с ID {lead_id}")
+            else:
+                logger.info(f"Повторная ошибка создания чата в сделке #{lead_id}, проблема с Radist.Online")
+                await CustomFieldsFetcher.change_status(lead_id, phone_number)
+                await LeadFetcher.change_lead_status(lead_id, 'В работе ( не было звонка)')
+    except Exception as e:
+        logger.error(f"Возникла ошибка при создании чата в Radist.Online: {e}. Сделка #{lead_id}")
 
 
 async def proceed_new_lead(lead_id, new_status_id=None):
@@ -132,7 +140,7 @@ async def proceed_new_lead(lead_id, new_status_id=None):
                 )
                 if chat_id:
                     chat_id = int(chat_id)
-                    await chat_id_proceed(chat_id, lead_id, contact_id, survey_data, segment)
+                    await chat_id_proceed(chat_id, lead_id)
                 else:
                     # После первой неудачной попытки создания чата в Radist.Online добавляем тайм-аут и пытаемся ещё раз
                     logger.info(f"Ошибка создания чата в сделке #{lead_id}, проблема с Radist.Online, тайм-аут: 300")
@@ -143,7 +151,7 @@ async def proceed_new_lead(lead_id, new_status_id=None):
                     )
                     if chat_id:
                         chat_id = int(chat_id)
-                        await chat_id_proceed(chat_id, lead_id, contact_id, survey_data, segment)
+                        await chat_id_proceed(chat_id, lead_id)
                     else:
                         logger.info(f"Повторная ошибка создания чата в сделке #{lead_id}, проблема с Radist.Online")
                         await CustomFieldsFetcher.change_status(lead_id, phone_number)
@@ -158,6 +166,9 @@ async def proceed_new_lead(lead_id, new_status_id=None):
                 tag_name = 'сегмент С'
             else:
                 tag_name = 'диагноз'
+
+            # Создаём чат и отправляем первое сообщение при неудачном прохождении первичной проверки
+            await impassable_survey_proceed(name, phone_number, int(lead_id), survey_data)
 
             # Меняем статус, ставим задачу и добавляем тег
             await LeadFetcher.change_lead_status(lead_id=lead_id, status_name='ТРЕБУЕТСЯ МЕНЕДЖЕР')

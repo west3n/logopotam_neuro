@@ -1,18 +1,20 @@
 import aiohttp
 
 from src.api.amoCRM.leads import LeadFetcher
-from src.core.config import settings, headers, logger
 from src.api.amoCRM.custom_fields import CustomFieldsFetcher
+
+from src.core.config import settings, headers, logger
 from src.orm.crud.amo_leads import AmoLeadsCRUD
-from src.orm.crud.amo_statuses import AmoStatusesCRUD
+from src.orm.crud.radist_messages import RadistMessagesCRUD
 
 
 class RadistonlineMessages:
     @staticmethod
-    async def send_message(chat_id: int, text: str):
+    async def send_message(chat_id: int, text: str, new_messages_count: int = None):
         """
         Отправка сообщения через chat_id клиента
 
+        :param new_messages_count: Количество неотвеченных сообщений
         :param chat_id: ID чата клиента из списка чатов Radist.Online
         :param text: Текст сообщения
         :return: Текст, сообщающий об успешной отправке сообщения (или кода с текстом ошибки)
@@ -23,6 +25,18 @@ class RadistonlineMessages:
 
             # Если статус сделки СТАРТ НЕЙРО
             if status_id == 66505833:
+                if new_messages_count:
+                    unanswered_messages = await RadistMessagesCRUD.get_all_unanswered_messages(chat_id=chat_id)
+                    logger.info(
+                        f"Сделка {lead_id}. Сообщений до таймера: {new_messages_count}."
+                        f" Сообщений после: {len(unanswered_messages)}"
+                    )
+                    # Если за время генерации текста появилось новое сообщение, то с текстом дальше не работаем
+                    if len(unanswered_messages) > new_messages_count:
+                        return
+                    else:
+                        new_messages_ids = [i[0] for i in unanswered_messages]
+                        await RadistMessagesCRUD.change_status(new_messages_ids, 'answered')
                 url = settings.RADIST_SUBDOMAIN_URL + 'messaging/messages/'
                 connection_id = settings.CONNECTION_ID
                 data = {
@@ -39,6 +53,7 @@ class RadistonlineMessages:
                         response_json = await response.json()
                         if response.status == 200:
                             await CustomFieldsFetcher.message_counter(lead_id)
+                            logger.info(f"Отправили сообщение! Сделка #{lead_id}: {text}")
                         else:
                             logger.error(
                                 f"Ошибка при отправке сообщения в сделке #{lead_id}: {str(response_json)}")

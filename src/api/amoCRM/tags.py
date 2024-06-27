@@ -5,6 +5,20 @@ from src.core.config import settings, headers, logger
 
 class TagsFetcher:
     @staticmethod
+    async def new_tag(name: str):
+        """
+        Создание нового тега
+        """
+        url = settings.AMO_SUBDOMAIN_URL + '/api/v4/leads/tags/'
+        data = [{'name': name}]
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url=url, json=data, headers=headers.AMO_HEADERS) as response:
+                if response.status == 200:
+                    logger.info(f'Тег {name} создан')
+                else:
+                    logger.error(f'Не удалось создать тег {name}: {str(await response.json())}')
+
+    @staticmethod
     async def get_tag_by_name(name: str):
         """
         Получение id тега по имени
@@ -41,6 +55,8 @@ class TagsFetcher:
         async with aiohttp.ClientSession() as session:
             async with session.patch(url=url, json=data, headers=headers.AMO_HEADERS) as response:
                 if response.status == 200:
+                    print(f'Тег {tag_name} добавлен к сделке {lead_id}')
                     logger.info(f'Тег {tag_name} добавлен к сделке {lead_id}')
                 else:
+                    print(f'Не удалось добавить тег {tag_name} к сделке {lead_id}: {str(await response.json())}')
                     logger.error(f'Не удалось добавить тег {tag_name} к сделке {lead_id}: {str(await response.json())}')

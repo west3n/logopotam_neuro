@@ -19,9 +19,7 @@ from src.core.texts import RegistrationAssistantTexts, TaskTexts
 
 from src.dialog.objections.llm_instructor import JSONChecker, SurveyInitialCheck, GetSlotId, SurveyCollector
 
-from src.orm.crud.amo_contacts import AmoContactsCRUD
 from src.orm.crud.radist_chats import RadistChatsCRUD, ChatStepsCRUD
-from src.orm.crud.radist_messages import RadistMessagesCRUD
 from src.orm.crud.slots import SlotsCRUD
 
 openai_client = openai_clients.OPENAI_ASYNC_CLIENT
@@ -34,18 +32,6 @@ current_day_of_week = {
     5: "суббота",
     6: "воскресенье"
 }
-
-
-async def get_child_info(json_data: dict, segment: str):
-    child_info = {
-        "city": json_data["Страна/город"],
-        "child_name": json_data["Имя ребёнка"],
-        "child_birth_date": datetime.strptime(json_data["Дата рождения"], "%Y-%m-%d"),
-        "doctor_enquiry": json_data["Подробнее о запросе"],
-        "diagnosis": json_data['Диагноз (если есть)'],
-        "segment": segment,
-    }
-    return child_info
 
 
 def slots_formatting(slots):
@@ -227,125 +213,103 @@ class AssistantStream(AsyncAssistantEventHandler):
         text = message.content[0].text
         timer_seconds = (datetime.now() - self.start_time).total_seconds()
         logger.info(f"Сгенерирован текст для сделки #{self.lead_id}: {text.value}. Время: {timer_seconds}")
-        if timer_seconds < 35:
-            await asyncio.sleep(35 - timer_seconds)
-        # Если за время генерации текста появилось новое сообщение, то с текстом дальше не работаем
-        unanswered_messages = await RadistMessagesCRUD.get_all_unanswered_messages(chat_id=self.chat_id)
-        logger.info(
-            f"Сделка {self.lead_id}. Сообщений до таймера: {self.new_messages_count}."
-            f" Сообщений после: {len(unanswered_messages)}")
-        if len(unanswered_messages) > self.new_messages_count:
-            pass
-        else:
-            new_messages_ids = [i[0] for i in unanswered_messages]
-            await RadistMessagesCRUD.change_status(new_messages_ids, 'answered')
-            if 'json' in text.value or ('{' in text.value and '}' in text.value):
+        if timer_seconds < 20:
+            await asyncio.sleep(20 - timer_seconds)
+        if 'json' in text.value or ('{' in text.value and '}' in text.value):
+            try:
+                json_data = await JSONChecker.inject_json(text.value)
+                logger.info(f"Получил JSON в сделке #{self.lead_id}: {str(json_data)}")
+            except Exception as e:
+                logger.error(f"Ошибка при обработке JSON {e}. Сделка #{self.lead_id}. Пробуем заново.")
                 try:
                     json_data = await JSONChecker.inject_json(text.value)
-                    logger.info(f"Получил JSON в сделке #{self.lead_id}: {str(json_data)}")
                 except Exception as e:
-                    logger.error(f"Ошибка при обработке JSON {e}. Сделка #{self.lead_id}. Пробуем заново.")
+                    logger.error(
+                        f"Повторная ошибка при обработке JSON {e}. Сделка #{self.lead_id}. Пробуем другой метод."
+                    )
                     try:
-                        json_data = await JSONChecker.inject_json(text.value)
+                        json_data = await SurveyCollector.get_survey_data(text.value)
                     except Exception as e:
-                        logger.error(
-                            f"Повторная ошибка при обработке JSON {e}. Сделка #{self.lead_id}. Пробуем другой метод."
-                        )
-                        try:
-                            json_data = await SurveyCollector.get_survey_data(text.value)
-                        except Exception as e:
-                            json_data = None
-                            logger.error(f"Повторная ошибка при обработке JSON {e}. Сделка #{self.lead_id}.")
-                        pass
-                try:
-                    if json_data:
-                        await CustomFieldsFetcher.save_survey_lead_fields(self.lead_id, json_data)
-                        logger.info(f"Сделка #{self.lead_id}: данные по клиенту сохранены в amoCRM")
-                except Exception as e:
-                    logger.error(f"При сохранении данных по клиенту в сделке {self.lead_id} произошла ошибка: {e}")
+                        json_data = None
+                        logger.error(f"Повторная ошибка при обработке JSON {e}. Сделка #{self.lead_id}.")
                     pass
-                try:
-                    survey_complete_text = RegistrationAssistantTexts.survey_completed()
-                    await RadistonlineMessages.send_message(chat_id=self.chat_id, text=survey_complete_text)
-                    logger.info(f"Сделка #{self.lead_id}: сообщение об окончании опроса отправлено")
-                except Exception as e:
-                    logger.error(f"Ошибка отправки сообщения об окончании опроса в сделке {self.lead_id}: {e}")
-                    pass
-                try:
-                    if json_data:
-                        baby_age_month, segment, for_online = await SurveyInitialCheck.get_survey_initial_check(
-                            json_data)
-                        logger.info(
-                            f"Сделка #{self.lead_id}: Месяцы: {baby_age_month}, "
-                            f"Сегмент: {segment}, Онлайн: {for_online}"
-                        )
-                    else:
-                        baby_age_month, segment, for_online = 43, 'A', True
-                        logger.error(
-                            f"Сделка #{self.lead_id}: Месяцы: {baby_age_month},"
-                            f" Сегмент: {segment}, Онлайн: {for_online}"
-                        )
-                except Exception as e:
+            try:
+                if json_data:
+                    await CustomFieldsFetcher.save_survey_lead_fields(self.lead_id, json_data)
+                    logger.info(f"Сделка #{self.lead_id}: данные по клиенту сохранены в amoCRM")
+            except Exception as e:
+                logger.error(f"При сохранении данных по клиенту в сделке {self.lead_id} произошла ошибка: {e}")
+                pass
+            try:
+                survey_complete_text = RegistrationAssistantTexts.survey_completed()
+                await RadistonlineMessages.send_message(chat_id=self.chat_id, text=survey_complete_text)
+                logger.info(f"Сделка #{self.lead_id}: сообщение об окончании опроса отправлено")
+            except Exception as e:
+                logger.error(f"Ошибка отправки сообщения об окончании опроса в сделке {self.lead_id}: {e}")
+                pass
+            try:
+                if json_data:
                     baby_age_month, segment, for_online = await SurveyInitialCheck.get_survey_initial_check(
                         json_data)
-                    logger.error(
-                        f"При получении данных для проверки анкеты "
-                        f"клиента в сделке {self.lead_id} произошла ошибка: {e}"
+                    logger.info(
+                        f"Сделка #{self.lead_id}: Месяцы: {baby_age_month}, "
+                        f"Сегмент: {segment}, Онлайн: {for_online}"
                     )
+                else:
+                    baby_age_month, segment, for_online = 43, 'A', True
+                    logger.error(
+                        f"Сделка #{self.lead_id}: Месяцы: {baby_age_month},"
+                        f" Сегмент: {segment}, Онлайн: {for_online}"
+                    )
+            except Exception as e:
+                baby_age_month, segment, for_online = await SurveyInitialCheck.get_survey_initial_check(
+                    json_data)
+                logger.error(
+                    f"При получении данных для проверки анкеты "
+                    f"клиента в сделке {self.lead_id} произошла ошибка: {e}"
+                )
+                pass
+            # Возраст ребёнка мы высчитываем в количестве месяцев для более надёжной проверки.
+            if baby_age_month > 42 and segment != "C" and for_online:
+                try:
+                    await Assistant.get_first_registration_message(chat_id=self.chat_id)
+                    logger.info(f"Сделка #{self.lead_id}: Сообщение о регистрации отправлено")
+                except Exception as e:
+                    logger.error(
+                        f"При отправке сообщения о регистрации в сделке {self.lead_id} произошла ошибка: {e}")
                     pass
-                # Возраст ребёнка мы высчитываем в количестве месяцев для более надёжной проверки.
-                if baby_age_month > 42 and segment != "C" and for_online:
-                    try:
-                        await Assistant.get_first_registration_message(chat_id=self.chat_id)
-                        logger.info(f"Сделка #{self.lead_id}: Сообщение о регистрации отправлено")
-                    except Exception as e:
-                        logger.error(
-                            f"При отправке сообщения о регистрации в сделке {self.lead_id} произошла ошибка: {e}")
-                        pass
-                    try:
-                        await ChatStepsCRUD.update(chat_id=self.chat_id, step="registration")
-                        logger.info(f"Сделка #{self.lead_id}: Статус чата обновлен")
-                    except Exception as e:
-                        logger.error(f"При обновлении статуса чата в сделке {self.lead_id} произошла ошибка: {e}")
-                        pass
-                    try:
-                        child_info = await get_child_info(json_data, segment)
-                        logger.info(f"Сделка #{self.lead_id}: Данные по ребёнку: {child_info}")
-                    except Exception as e:
-                        child_info = await get_child_info(json_data, segment)
-                        logger.error(f"При получении данных по ребёнку в сделке {self.lead_id} произошла ошибка: {e}")
-                        pass
-                    try:
-                        await AmoContactsCRUD.update_contact_values(contact_id=self.contact_id,
-                                                                    update_columns=child_info)
-                        logger.info(f"Сделка #{self.lead_id}: Данные по контакту в БД обновлены")
-                    except Exception as e:
-                        logger.error(f"При обновлении данных по контакту в сделке {self.lead_id} произошла ошибка: {e}")
-                        pass
-                else:
-                    if baby_age_month < 42:
-                        tag_name = 'младше 3,6'
-                    elif segment == "C":
-                        tag_name = 'сегмент С'
-                    else:
-                        tag_name = 'диагноз'
-                    # Если сделка не прошла проверку, то просто меняем статус и ставим задачу
-                    await LeadFetcher.change_lead_status(lead_id=self.lead_id, status_name='ТРЕБУЕТСЯ МЕНЕДЖЕР')
-                    await TaskFetcher.set_task(lead_id=str(self.lead_id), task_text=TaskTexts.NEED_MANAGER_TEXT)
-                    await TagsFetcher.add_new_tag(lead_id=str(self.lead_id), tag_name=tag_name)
-                    logger.info(f"Сделка #{self.lead_id} не прошла первичную проверку. Тег: {tag_name}")
+                try:
+                    await ChatStepsCRUD.update(chat_id=self.chat_id, step="registration")
+                    logger.info(f"Сделка #{self.lead_id}: Статус чата обновлен")
+                except Exception as e:
+                    logger.error(f"При обновлении статуса чата в сделке {self.lead_id} произошла ошибка: {e}")
+                    pass
             else:
-                if "False" in text.value or "Otkaz" in text.value:
-                    tag_name = "вопрос не для нейро"
-                    if "Otkaz" in text.value:
-                        tag_name = "отказ"
-                    await LeadFetcher.change_lead_status(lead_id=self.lead_id, status_name='ТРЕБУЕТСЯ МЕНЕДЖЕР')
-                    await TagsFetcher.add_new_tag(lead_id=str(self.lead_id), tag_name=tag_name)
-                    await TaskFetcher.set_task(lead_id=str(self.lead_id), task_text=TaskTexts.NEED_MANAGER_TEXT)
-                    logger.info(f"В сделке {self.lead_id} не удалось ответить на вопрос")
+                if baby_age_month < 42:
+                    tag_name = 'младше 3,6'
+                elif segment == "C":
+                    tag_name = 'сегмент С'
                 else:
-                    await RadistonlineMessages.send_message(chat_id=self.chat_id, text=text.value)
-                    logger.info(f"Отправили сообщение! Сделка #{self.lead_id}: {text.value}")
+                    tag_name = 'диагноз'
+                # Если сделка не прошла проверку, то просто меняем статус и ставим задачу
+                await LeadFetcher.change_lead_status(lead_id=self.lead_id, status_name='ТРЕБУЕТСЯ МЕНЕДЖЕР')
+                await TaskFetcher.set_task(lead_id=str(self.lead_id), task_text=TaskTexts.NEED_MANAGER_TEXT)
+                await TagsFetcher.add_new_tag(lead_id=str(self.lead_id), tag_name=tag_name)
+                logger.info(f"Сделка #{self.lead_id} не прошла первичную проверку. Тег: {tag_name}")
+        else:
+            if "False" in text.value or "Otkaz" in text.value:
+                tag_name = "вопрос не для нейро"
+                if "Otkaz" in text.value:
+                    tag_name = "отказ"
+                await LeadFetcher.change_lead_status(lead_id=self.lead_id, status_name='ТРЕБУЕТСЯ МЕНЕДЖЕР')
+                await TagsFetcher.add_new_tag(lead_id=str(self.lead_id), tag_name=tag_name)
+                await TaskFetcher.set_task(lead_id=str(self.lead_id), task_text=TaskTexts.NEED_MANAGER_TEXT)
+                logger.info(f"В сделке {self.lead_id} не удалось ответить на вопрос")
+            else:
+                await RadistonlineMessages.send_message(
+                    chat_id=self.chat_id, text=text.value, new_messages_count=self.new_messages_count
+                )
+                logger.info(f"Отправили сообщение! Сделка #{self.lead_id}: {text.value}")
 
 
 class RegistrationAssistantStream(AsyncAssistantEventHandler):
@@ -363,15 +327,8 @@ class RegistrationAssistantStream(AsyncAssistantEventHandler):
     async def on_message_done(self, message: Message) -> None:
         text = message.content[0].text
         timer_seconds = (datetime.now() - self.start_time).total_seconds()
-        if timer_seconds < 35:
-            await asyncio.sleep(35 - timer_seconds)
-        # Если за время генерации текста появилось новое сообщение, то с текстом дальше не работаем
-        unanswered_messages = await RadistMessagesCRUD.get_all_unanswered_messages(chat_id=self.chat_id)
-        if len(unanswered_messages) > self.new_messages_count:
-            pass
-        else:
-            new_messages_ids = [i[0] for i in unanswered_messages]
-            await RadistMessagesCRUD.change_status(new_messages_ids, 'answered')
+        if timer_seconds < 20:
+            await asyncio.sleep(20 - timer_seconds)
         if "True" in text.value:
             # Здесь логика после успешного выбора времени
             logger.info(f"В сделке с ID {self.lead_id} клиент выбрал время: {text.value}")
@@ -383,7 +340,7 @@ class RegistrationAssistantStream(AsyncAssistantEventHandler):
             is_slot_valid = await BubulearnSlotsFetcher.is_slot_free(slot_id=slot_id)
             if not is_slot_valid:
                 logger.info(f"В сделке с ID #{self.lead_id} слот уже занят: {slot_id}")
-                status_value = await CustomFieldsFetcher.get_777978_status_value(lead_id=self.lead_id)
+                status_value = await CustomFieldsFetcher.get_neuromanager_status_value(lead_id=self.lead_id)
                 if status_value and status_value == "Повторное предложение слота":
 
                     # В этом случае повторное предложение уже было сделано, поэтому просто меняем статус
@@ -395,7 +352,7 @@ class RegistrationAssistantStream(AsyncAssistantEventHandler):
                     re_offer = await Assistant.re_offer_slot(chat_id=self.chat_id)
                     logger.info(f"Отправлено повторное предложение слота в чат {self.chat_id}: {re_offer}")
                     # Добавляем пометку о том, что повторное предложение уже было сделано
-                    await CustomFieldsFetcher.change_status(lead_id=self.lead_id)
+                    await CustomFieldsFetcher.change_status(lead_id=self.lead_id, text="Повторное предложение слота")
             else:
                 if time and slot_id and slot_id != "None":
                     logger.info(f"В сделке с ID #{self.lead_id} выбрал время: {time}")
@@ -406,10 +363,11 @@ class RegistrationAssistantStream(AsyncAssistantEventHandler):
                     logger.info(f"Отправили сообщение! Сделка #{self.lead_id}: {first_message}")
                     await SlotsCRUD.take_slot(slot_id=slot_id)
                     await LeadFetcher.change_lead_status(lead_id=self.lead_id, status_name='ВЫБРАЛИ ВРЕМЯ')
+                    await TagsFetcher.add_new_tag(lead_id=str(self.lead_id), tag_name='Записал НМ')
                     await TaskFetcher.set_task(lead_id=str(self.lead_id), task_text=TaskTexts.TIME_SELECTED_TEXT)
                 else:
                     logger.info(f"В сделке с ID #{self.lead_id} слот уже занят: {slot_id}")
-                    status_value = await CustomFieldsFetcher.get_777978_status_value(lead_id=self.lead_id)
+                    status_value = await CustomFieldsFetcher.get_neuromanager_status_value(lead_id=self.lead_id)
                     if status_value and status_value == "Повторное предложение слота":
 
                         # В этом случае повторное предложение уже было сделано, поэтому просто меняем статус
@@ -421,7 +379,9 @@ class RegistrationAssistantStream(AsyncAssistantEventHandler):
                         re_offer = await Assistant.re_offer_slot(chat_id=self.chat_id)
                         logger.info(f"Отправлено повторное предложение слота в чат {self.chat_id}: {re_offer}")
                         # Добавляем пометку о том, что повторное предложение уже было сделано
-                        await CustomFieldsFetcher.change_status(lead_id=self.lead_id)
+                        await CustomFieldsFetcher.change_status(
+                            lead_id=self.lead_id, text="Повторное предложение слота"
+                        )
         elif "False" in text.value or "Otkaz" in text.value:
             tag_name = "вопрос не для нейро"
             if "Otkaz" in text.value:
@@ -432,8 +392,9 @@ class RegistrationAssistantStream(AsyncAssistantEventHandler):
             await TaskFetcher.set_task(lead_id=str(self.lead_id), task_text=TaskTexts.NEED_MANAGER_TEXT)
             logger.info(f"В сделке с ID {self.lead_id} не смогли договориться насчёт времени приема")
         else:
-            await RadistonlineMessages.send_message(chat_id=self.chat_id, text=text.value)
-            logger.info(f"Отправили сообщение! Сделка #{self.lead_id}: {text.value}")
+            await RadistonlineMessages.send_message(
+                chat_id=self.chat_id, text=text.value, new_messages_count=self.new_messages_count
+            )
             # Здесь проверяем, является ли сообщение ассистента помощью с ZOOM
             if "ноутбука/компьютера" in text.value:
                 await RadistonlineMessages.send_image(self.chat_id, settings.ZOOM_IMAGE_URL)

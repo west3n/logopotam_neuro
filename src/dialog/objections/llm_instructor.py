@@ -1,11 +1,11 @@
 import ast
 import asyncio
-
 import pandas as pd
+
 from instructor import llm_validator
 from datetime import datetime
 from typing import Optional, Annotated
-from pydantic import BaseModel, Field, field_validator, BeforeValidator, root_validator
+from pydantic import BaseModel, Field, field_validator, BeforeValidator
 
 from src.core.config import openai_clients, logger
 from src.core.texts import ObjectionsCheckerTexts, SurveyInitialCheckTexts, SlotsTexts
@@ -186,18 +186,12 @@ class GetSlotId(BaseModel):
     """Инструктор нужен для получения ID слота из сообщения ассистента"""
     slot_id: Optional[str] = Field(description=asyncio.run(SlotsTexts.slot_validation_text()))
 
-    @field_validator("slot_id")
-    def not_none(cls, value):  # noqa
-        if value is None:
-            raise ValueError
-        return value
-
     @staticmethod
     async def get_slot_id(message_text: str):
         message_text: GetSlotId = await instructor_async_client.chat.completions.create(
             model="gpt-4o",
             response_model=GetSlotId,
-            max_retries=15,
+            max_retries=20,
             messages=[
                 {
                     "role": "user",
