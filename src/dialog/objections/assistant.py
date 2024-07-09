@@ -345,6 +345,7 @@ class RegistrationAssistantStream(AsyncAssistantEventHandler):
 
                     # В этом случае повторное предложение уже было сделано, поэтому просто меняем статус
                     await LeadFetcher.change_lead_status(lead_id=self.lead_id, status_name='В работе ( не было звонка)')
+                    await TagsFetcher.add_new_tag(lead_id=str(self.lead_id), tag_name='не было нужного слота')
                     logger.info(f"В сделке с ID #{self.lead_id} повторное предложение уже было сделано")
                 else:
 
@@ -363,7 +364,7 @@ class RegistrationAssistantStream(AsyncAssistantEventHandler):
                     logger.info(f"Отправили сообщение! Сделка #{self.lead_id}: {first_message}")
                     await SlotsCRUD.take_slot(slot_id=slot_id)
                     await LeadFetcher.change_lead_status(lead_id=self.lead_id, status_name='ВЫБРАЛИ ВРЕМЯ')
-                    await TagsFetcher.add_new_tag(lead_id=str(self.lead_id), tag_name='Записал НМ')
+                    await TagsFetcher.add_new_tag(lead_id=str(self.lead_id), tag_name='Записал_НМ')
                     await TaskFetcher.set_task(lead_id=str(self.lead_id), task_text=TaskTexts.TIME_SELECTED_TEXT)
                 else:
                     logger.info(f"В сделке с ID #{self.lead_id} слот уже занят: {slot_id}")
@@ -373,6 +374,7 @@ class RegistrationAssistantStream(AsyncAssistantEventHandler):
                         # В этом случае повторное предложение уже было сделано, поэтому просто меняем статус
                         await LeadFetcher.change_lead_status(lead_id=self.lead_id,
                                                              status_name='В работе ( не было звонка)')
+                        await TagsFetcher.add_new_tag(lead_id=str(self.lead_id), tag_name='не было нужного слота')
                         logger.info(f"В сделке с ID #{self.lead_id} повторное предложение уже было сделано")
                     else:
                         # В этом случае повторное предложение еще не сделано, поэтому отправляем повторное предложение

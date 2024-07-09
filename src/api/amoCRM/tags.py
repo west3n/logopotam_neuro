@@ -55,8 +55,12 @@ class TagsFetcher:
         async with aiohttp.ClientSession() as session:
             async with session.patch(url=url, json=data, headers=headers.AMO_HEADERS) as response:
                 if response.status == 200:
-                    print(f'Тег {tag_name} добавлен к сделке {lead_id}')
                     logger.info(f'Тег {tag_name} добавлен к сделке {lead_id}')
                 else:
-                    print(f'Не удалось добавить тег {tag_name} к сделке {lead_id}: {str(await response.json())}')
                     logger.error(f'Не удалось добавить тег {tag_name} к сделке {lead_id}: {str(await response.json())}')
+
+
+if __name__ == '__main__':
+    import asyncio
+    tag = asyncio.run(TagsFetcher.get_tag_by_name('не было нужного слота'))
+    print(tag)

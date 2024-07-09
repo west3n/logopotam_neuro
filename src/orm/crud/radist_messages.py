@@ -132,7 +132,7 @@ class RadistMessagesCRUD:
                 return results
 
     @staticmethod
-    async def get_15_minutes_delay_chats():
+    async def get_15_minutes_delay_chats() -> List:
         """
         Возвращает список чатов, в которых с момента последнего сообщения от нейроменеджера прошло более 15 минут
         """

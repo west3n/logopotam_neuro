@@ -28,8 +28,10 @@ class CustomFieldsFetcher:
             async with session.get(url=url, headers=headers.AMO_HEADERS) as response:
                 response_json = await response.json()
                 fields_list = response_json['custom_fields_values']
-                fields_dict = {item['field_name']: item['values'][0]['value'] for item in
-                               fields_list} if fields_list else None  # noqa
+                if fields_list:
+                    fields_dict = {item['field_name']: item['values'][0]['value'] for item in fields_list}
+                else:
+                    fields_dict = None
                 return fields_dict
 
     @staticmethod
@@ -53,17 +55,20 @@ class CustomFieldsFetcher:
         :return: Словарь с данными из анкеты
         """
         fields = await CustomFieldsFetcher.get_survey_lead_fields(lead_id)
-        try:
-            child_data = {
-                'Имя ребёнка': fields['Имя ребёнка'],
-                'Дата рождения': fields['Дата рождения'],
-                'Страна/город': fields['Страна/город'],
-                'Подробнее о запросе': fields['Подробнее о запросе'],
-                'Диагноз (если есть)': fields['Диагноз (если есть)'],
-            }
-        except KeyError:
+        if fields:
+            try:
+                child_data = {
+                    'Имя ребёнка': fields['Имя ребёнка'],
+                    'Дата рождения': fields['Дата рождения'],
+                    'Страна/город': fields['Страна/город'],
+                    'Подробнее о запросе': fields['Подробнее о запросе'],
+                    'Диагноз (если есть)': fields['Диагноз (если есть)'],
+                }
+            except KeyError:
+                child_data = None
+        else:
+            logger.info(f'Анкета с ID {lead_id} не содержит данных в кастомных полях')
             child_data = None
-
         return child_data
 
     @staticmethod
@@ -179,15 +184,18 @@ class CustomFieldsFetcher:
                 response_json = await response.json()
                 if response.status == 200:
                     fields_list = response_json['custom_fields_values']
-                    field_ids = [field['field_id'] for field in fields_list]
-                    if 777978 in field_ids:
-                        field_value = \
-                            [field['values'][0]['value'] for field in fields_list if field['field_id'] == 777978][
-                                0]
+                    if fields_list:
+                        field_ids = [field['field_id'] for field in fields_list]
+                        if 777978 in field_ids:
+                            field_value = \
+                                [field['values'][0]['value'] for field in fields_list if field['field_id'] == 777978][
+                                    0]
+                        else:
+                            field_value = None
+                        logger.info(f"Поле 'Нейроменеджер статус' в сделке {lead_id} успешно получено: {field_value}")
+                        return field_value
                     else:
-                        field_value = None
-                    logger.info(f"Поле 'Нейроменеджер статус' в сделке {lead_id} успешно получено: {field_value}")
-                    return field_value
+                        return None
                 else:
                     logger.error(f"Ошибка при получении значения поля 'Нейроменеджер статус' в сделке {lead_id}: "
                                  f"{str(response_json)}")

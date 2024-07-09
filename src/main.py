@@ -8,7 +8,7 @@ from quart import Quart, request, jsonify
 from src.dialog.distributors.amo_distributor import amo_data_processing
 from src.dialog.distributors.radist_distributor import radist_data_processing
 
-from src.core.scheduler import send_30_min_delay_messages, change_status_2hrs_delay_messages
+from src.core.scheduler import send_10_min_delay_messages, change_status_15_min_delay_messages
 from src.orm.crud.slots import SlotsCRUD
 from src.orm.crud.radist_messages import RadistMessagesCRUD
 app = Quart(__name__)
@@ -49,14 +49,14 @@ async def start_scheduler():
     """
     Запуск ежеминутных задач
     1. Обновление слотов
-    2. Отправка сообщений при 30-минутном молчании
-    3. Смена статусов сделок при 2-х часовом молчании
+    2. Отправка сообщений при 10-минутном молчании
+    3. Смена статусов сделок при 15-минутном молчании
     """
     scheduler = AsyncIOScheduler()
     scheduler.add_job(RadistMessagesCRUD.delete_all_yesterday_messages, 'cron', hour=22)
     scheduler.add_job(SlotsCRUD.update_slots, 'interval', seconds=60)
-    scheduler.add_job(send_30_min_delay_messages, 'interval', seconds=75)
-    scheduler.add_job(change_status_2hrs_delay_messages, 'interval', seconds=90)
+    scheduler.add_job(send_10_min_delay_messages, 'interval', seconds=80, max_instances=1)
+    scheduler.add_job(change_status_15_min_delay_messages, 'interval', seconds=90, max_instances=1)
     scheduler.start()
 
 

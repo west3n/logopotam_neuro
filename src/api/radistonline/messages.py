@@ -10,6 +10,36 @@ from src.orm.crud.radist_messages import RadistMessagesCRUD
 
 class RadistonlineMessages:
     @staticmethod
+    async def send_obvious_message(lead_id: int, chat_id: int, text: str):
+        """
+        Дополнительная функция для быстрой отправки сообщений без дополнительных проверок
+        :param lead_id:
+        :param chat_id:
+        :param text:
+        :return:
+        """
+        url = settings.RADIST_SUBDOMAIN_URL + 'messaging/messages/'
+        connection_id = settings.CONNECTION_ID
+        data = {
+            "connection_id": connection_id,
+            "chat_id": chat_id,
+            "mode": "async",
+            "message_type": "text",
+            "text": {
+                "text": text
+            }
+        }
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url=url, headers=headers.RADIST_HEADERS, json=data) as response:
+                response_json = await response.json()
+                if response.status == 200:
+                    await CustomFieldsFetcher.message_counter(lead_id)
+                    logger.info(f"Отправили сообщение! Сделка #{lead_id}: {text}")
+                else:
+                    logger.error(
+                        f"Ошибка при отправке сообщения в сделке #{lead_id}: {str(response_json)}")
+
+    @staticmethod
     async def send_message(chat_id: int, text: str, new_messages_count: int = None):
         """
         Отправка сообщения через chat_id клиента
@@ -25,38 +55,42 @@ class RadistonlineMessages:
 
             # Если статус сделки СТАРТ НЕЙРО
             if status_id == 66505833:
-                if new_messages_count:
-                    unanswered_messages = await RadistMessagesCRUD.get_all_unanswered_messages(chat_id=chat_id)
-                    logger.info(
-                        f"Сделка {lead_id}. Сообщений до таймера: {new_messages_count}."
-                        f" Сообщений после: {len(unanswered_messages)}"
-                    )
-                    # Если за время генерации текста появилось новое сообщение, то с текстом дальше не работаем
-                    if len(unanswered_messages) > new_messages_count:
-                        return
-                    else:
-                        new_messages_ids = [i[0] for i in unanswered_messages]
-                        await RadistMessagesCRUD.change_status(new_messages_ids, 'answered')
-                url = settings.RADIST_SUBDOMAIN_URL + 'messaging/messages/'
-                connection_id = settings.CONNECTION_ID
-                data = {
-                    "connection_id": connection_id,
-                    "chat_id": chat_id,
-                    "mode": "async",
-                    "message_type": "text",
-                    "text": {
-                        "text": text
-                    }
-                }
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(url=url, headers=headers.RADIST_HEADERS, json=data) as response:
-                        response_json = await response.json()
-                        if response.status == 200:
-                            await CustomFieldsFetcher.message_counter(lead_id)
-                            logger.info(f"Отправили сообщение! Сделка #{lead_id}: {text}")
+                status = await CustomFieldsFetcher.get_neuromanager_status_value(lead_id=lead_id)
+                if status and status == "Требуется менеджер":
+                    await LeadFetcher.change_lead_status(lead_id=lead_id, status_name='ТРЕБУЕТСЯ МЕНЕДЖЕР')
+                else:
+                    if new_messages_count:
+                        unanswered_messages = await RadistMessagesCRUD.get_all_unanswered_messages(chat_id=chat_id)
+                        logger.info(
+                            f"Сделка {lead_id}. Сообщений до таймера: {new_messages_count}."
+                            f" Сообщений после: {len(unanswered_messages)}"
+                        )
+                        # Если за время генерации текста появилось новое сообщение, то с текстом дальше не работаем
+                        if len(unanswered_messages) > new_messages_count:
+                            return
                         else:
-                            logger.error(
-                                f"Ошибка при отправке сообщения в сделке #{lead_id}: {str(response_json)}")
+                            new_messages_ids = [i[0] for i in unanswered_messages]
+                            await RadistMessagesCRUD.change_status(new_messages_ids, 'answered')
+                    url = settings.RADIST_SUBDOMAIN_URL + 'messaging/messages/'
+                    connection_id = settings.CONNECTION_ID
+                    data = {
+                        "connection_id": connection_id,
+                        "chat_id": chat_id,
+                        "mode": "async",
+                        "message_type": "text",
+                        "text": {
+                            "text": text
+                        }
+                    }
+                    async with aiohttp.ClientSession() as session:
+                        async with session.post(url=url, headers=headers.RADIST_HEADERS, json=data) as response:
+                            response_json = await response.json()
+                            if response.status == 200:
+                                await CustomFieldsFetcher.message_counter(lead_id)
+                                logger.info(f"Отправили сообщение! Сделка #{lead_id}: {text}")
+                            else:
+                                logger.error(
+                                    f"Ошибка при отправке сообщения в сделке #{lead_id}: {str(response_json)}")
             else:
                 logger.info(f"Не отправляем сообщение в сделке #{lead_id} потому что статус сделки не СТАРТ НЕЙРО")
         else:
