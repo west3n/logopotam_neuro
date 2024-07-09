@@ -58,9 +58,3 @@ class TagsFetcher:
                     logger.info(f'Тег {tag_name} добавлен к сделке {lead_id}')
                 else:
                     logger.error(f'Не удалось добавить тег {tag_name} к сделке {lead_id}: {str(await response.json())}')
-
-
-if __name__ == '__main__':
-    import asyncio
-    tag = asyncio.run(TagsFetcher.get_tag_by_name('не было нужного слота'))
-    print(tag)
