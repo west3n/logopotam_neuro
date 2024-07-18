@@ -66,6 +66,7 @@ async def impassable_survey_proceed(name: str, phone_number: str, lead_id: int, 
                 logger.info(f"Повторная ошибка создания чата в сделке #{lead_id}, проблема с Radist.Online")
                 await CustomFieldsFetcher.change_status(lead_id, phone_number)
                 await LeadFetcher.change_lead_status(lead_id, 'В работе ( не было звонка)')
+                await AmoLeadsCRUD.delete_lead_and_related_data(lead_id)
     except Exception as e:
         logger.error(f"Возникла ошибка при создании чата в Radist.Online: {e}. Сделка #{lead_id}")
 
@@ -94,6 +95,7 @@ async def proceed_new_lead(lead_id, new_status_id=None):
     if not phone_number:
         await LeadFetcher.change_lead_status(lead_id=lead_id, status_name='ТРЕБУЕТСЯ МЕНЕДЖЕР')
         await TaskFetcher.set_task(lead_id=lead_id, task_text=TaskTexts.NEED_MANAGER_TEXT)
+        await AmoLeadsCRUD.delete_lead_and_related_data(lead_id)
     else:
         # Удаляем лишние знаки из номера телефона
         if "Доп.информация:," in phone_number:
@@ -159,6 +161,7 @@ async def proceed_new_lead(lead_id, new_status_id=None):
                             logger.info(f"Повторная ошибка создания чата в сделке #{lead_id}, проблема с Radist.Online")
                             await CustomFieldsFetcher.change_status(lead_id, phone_number)
                             await LeadFetcher.change_lead_status(lead_id, 'В работе ( не было звонка)')
+                            await AmoLeadsCRUD.delete_lead_and_related_data(lead_id)
                 except Exception as e:
                     logger.error(f"Возникла ошибка при создании чата в Radist.Online: {e}. Сделка #{lead_id}")
             else:
@@ -179,6 +182,7 @@ async def proceed_new_lead(lead_id, new_status_id=None):
                 await TaskFetcher.set_task(lead_id=lead_id, task_text=TaskTexts.NEED_MANAGER_TEXT)
                 await TagsFetcher.add_new_tag(lead_id=lead_id, tag_name=tag_name)
                 logger.info(f"Сделка #{lead_id} не прошла первичную проверку, тег: {tag_name}")
+                await AmoLeadsCRUD.delete_lead_and_related_data(lead_id)
         else:
             # Создаём новый чат в Radist.Online и сохраняем chat_id в БД
             try:
@@ -228,6 +232,7 @@ async def proceed_new_lead(lead_id, new_status_id=None):
                         logger.info(f"Повторная ошибка создания чата в сделке #{lead_id}, проблема с Radist.Online")
                         await CustomFieldsFetcher.change_status(lead_id, phone_number)
                         await LeadFetcher.change_lead_status(lead_id, 'В работе ( не было звонка)')
+                        await AmoLeadsCRUD.delete_lead_and_related_data(lead_id)
             except Exception as e:
                 logger.error(f"Возникла ошибка при создании чата в Radist.Online: {e}. Сделка #{lead_id}")
 

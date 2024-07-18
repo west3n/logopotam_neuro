@@ -1,8 +1,11 @@
+import time
 from typing import Union, List
 
-from sqlalchemy import select, update
+from sqlalchemy import select, update, delete
 from sqlalchemy.dialects.postgresql import insert
 
+from src.core.config import logger
+from src.orm.models.radist_messages import RadistMessages
 from src.orm.session import get_session
 
 from src.orm.models.amo_contacts import AmoContacts
@@ -138,13 +141,14 @@ class AmoLeadsCRUD:
             async with session.begin():
                 if isinstance(column, str):
                     # Если column - строка, то выполняем запрос для одного столбца
-                    result = await session.execute(select(getattr(AmoLeads, column)).where(AmoLeads.chat_id == chat_id)) # noqa
+                    result = await session.execute(
+                        select(getattr(AmoLeads, column)).where(AmoLeads.chat_id == chat_id))  # noqa
                     value = result.fetchone()
                     return value[0] if value else None
                 elif isinstance(column, list):
                     # Если column - список, то выполняем запрос для всех столбцов из списка
                     select_columns = [getattr(AmoLeads, col) for col in column]
-                    result = await session.execute(select(*select_columns).where(AmoLeads.chat_id == chat_id)) # noqa
+                    result = await session.execute(select(*select_columns).where(AmoLeads.chat_id == chat_id))  # noqa
                     values = result.fetchall()
                     return values[0] if values else None
 
@@ -157,7 +161,8 @@ class AmoLeadsCRUD:
         async_session = await get_session()
         async with async_session() as session:
             async with session.begin():
-                await session.execute(update(AmoLeads).where(AmoLeads.lead_id == lead_id).values(is_renamed=True))  # noqa
+                await session.execute(
+                    update(AmoLeads).where(AmoLeads.lead_id == lead_id).values(is_renamed=True))  # noqa
             await session.commit()
 
     @staticmethod
@@ -170,5 +175,50 @@ class AmoLeadsCRUD:
         async_session = await get_session()
         async with async_session() as session:
             async with session.begin():
-                await session.execute(update(AmoLeads).where(AmoLeads.lead_id == lead_id).values(lead_name=lead_name))  # noqa
+                await session.execute(
+                    update(AmoLeads).where(AmoLeads.lead_id == lead_id).values(lead_name=lead_name))  # noqa
+            await session.commit()
+
+    @staticmethod
+    async def delete_lead_and_related_data(lead_id: int):
+        """
+        Удаляем сделку и все связанные с ней данные
+        :param lead_id: ID сделки
+        """
+        async_session = await get_session()
+        async with async_session() as session:
+            async with session.begin():
+                lead = await session.execute(select(AmoLeads).where(AmoLeads.lead_id == lead_id))
+                lead = lead.scalars().first()
+
+                if not lead:
+                    return
+
+                contact_id = lead.contact_id
+                chat_id = lead.chat_id
+
+                delete_messages = (
+                    delete(RadistMessages)
+                    .where(RadistMessages.chat_id == chat_id)
+                )
+                await session.execute(delete_messages)
+
+                delete_chats = (
+                    delete(RadistChats)
+                    .where(RadistChats.chat_id == chat_id)
+                )
+                await session.execute(delete_chats)
+
+                delete_lead = (
+                    delete(AmoLeads)
+                    .where(AmoLeads.lead_id == lead_id)
+                )
+                await session.execute(delete_lead)
+
+                delete_contacts = (
+                    delete(AmoContacts)
+                    .where(AmoContacts.contact_id == contact_id)
+                )
+                await session.execute(delete_contacts)
+
             await session.commit()

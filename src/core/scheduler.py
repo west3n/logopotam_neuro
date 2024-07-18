@@ -5,6 +5,7 @@ from src.api.radistonline.messages import RadistonlineMessages
 
 from src.core.config import logger
 from src.core.texts import SchedulerTexts
+from src.orm.crud.amo_leads import AmoLeadsCRUD
 
 from src.orm.crud.amo_statuses import AmoStatusesCRUD
 from src.orm.crud.radist_chats import RadistChatsCRUD
@@ -51,6 +52,7 @@ async def change_status_15_min_delay_messages():
         if neuro_status_id == amo_status:
             await LeadFetcher.change_lead_status(int(lead_id), 'В работе ( не было звонка)')
             await CustomFieldsFetcher.change_status(int(lead_id), text="Не ответил на два сообщения от НМ")
+            await AmoLeadsCRUD.delete_lead_and_related_data(int(lead_id))
             if step == 'registration':
                 await TagsFetcher.add_new_tag(str(lead_id), 'не было нужного слота')
             logger.info(f"Изменён статус сделки #{lead_id} после 15-минутного молчания")
