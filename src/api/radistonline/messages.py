@@ -54,7 +54,7 @@ class RadistonlineMessages:
             status_id = await LeadFetcher.get_lead_status_id_by_lead_id(str(lead_id))
 
             # Если статус сделки СТАРТ НЕЙРО
-            if status_id == 66505833:
+            if status_id and status_id == 66505833:
                 status = await CustomFieldsFetcher.get_neuromanager_status_value(lead_id=lead_id)
                 if status and status == "Требуется менеджер":
                     await LeadFetcher.change_lead_status(lead_id=lead_id, status_name='ТРЕБУЕТСЯ МЕНЕДЖЕР')

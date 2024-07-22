@@ -36,7 +36,7 @@ async def radist_data_processing(data):
             neuro_status_id = await AmoStatusesCRUD.get_neuro_status_id("СТАРТ НЕЙРО")
             status_id = await LeadFetcher.get_lead_status_id_by_lead_id(str(lead_id))
             # Сравниваем ID статуса "СТАРТ НЕЙРО" со статусом пользователя
-            if status_id == neuro_status_id:
+            if status_id and status_id == neuro_status_id:
                 logger.info(f"Получено входящее сообщение в сделке #{lead_id}: {message_text}")
                 # Получаем текущий шаг ассистента
                 step = await ChatStepsCRUD.get_step(chat_id)

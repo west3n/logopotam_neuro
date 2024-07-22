@@ -83,7 +83,7 @@ class RadistMessagesCRUD:
         async_session = await get_session()
         async with async_session() as session:
             async with session.begin():
-                stmt = (update(RadistMessages).where(RadistMessages.message_id.in_(message_ids)).values( # noqa
+                stmt = (update(RadistMessages).where(RadistMessages.message_id.in_(message_ids)).values(  # noqa
                     status=new_status))
                 await session.execute(stmt)
                 await session.commit()
@@ -137,7 +137,7 @@ class RadistMessagesCRUD:
         Возвращает список чатов, в которых с момента последнего сообщения от нейроменеджера прошло более 15 минут
         """
         # здесь 5 минут вместо 15, т.к 10 минут уже прошло от сообщения, отправленного после 10-минутного молчания
-        two_hours_ago = datetime.now() - timedelta(minutes=5)
+        five_minutes_ago = datetime.now() - timedelta(minutes=5)
         async_session = await get_session()
         async with async_session() as session:
             async with session.begin():
@@ -165,7 +165,7 @@ class RadistMessagesCRUD:
                                 RadistMessages.send_time == subquery.c.latest_send_time)
                     )
                     .filter(
-                        RadistMessages.send_time < two_hours_ago,
+                        RadistMessages.send_time < five_minutes_ago,
                         RadistMessages.sender == 'robot',
                         RadistChats.is_delay_message_sent == True
                     )
@@ -176,16 +176,26 @@ class RadistMessagesCRUD:
                 return results
 
     @staticmethod
-    async def delete_all_yesterday_messages():
+    async def delete_old_messages():
         timezone = pytz.UTC
         now = datetime.now(timezone)
-        yesterday = now - timedelta(days=1)
+        older_than = now - timedelta(hours=10)
 
         async_session = await get_session()
         async with async_session() as session:
             async with session.begin():
                 query = (
                     delete(RadistMessages)
-                    .where(RadistMessages.send_time < yesterday) # noqa
+                    .where(RadistMessages.send_time < older_than)  # noqa
                 )
                 await session.execute(query)
+
+
+if __name__ == '__main__':
+    import asyncio
+    from timeit import default_timer as timer
+    start = timer()
+    chats = asyncio.run(RadistMessagesCRUD.get_15_minutes_delay_chats())
+    end = timer()
+    print(len(chats))
+    print(end - start)

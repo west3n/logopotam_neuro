@@ -297,7 +297,7 @@ class AssistantStream(AsyncAssistantEventHandler):
                 await TaskFetcher.set_task(lead_id=str(self.lead_id), task_text=TaskTexts.NEED_MANAGER_TEXT)
                 await TagsFetcher.add_new_tag(lead_id=str(self.lead_id), tag_name=tag_name)
                 logger.info(f"Сделка #{self.lead_id} не прошла первичную проверку. Тег: {tag_name}")
-                await AmoLeadsCRUD.delete_lead_and_related_data(self.lead_id)
+                await AmoLeadsCRUD.delete_lead_and_related_data(int(self.lead_id))
         else:
             if "False" in text.value or "Otkaz" in text.value:
                 tag_name = "вопрос не для нейро"
@@ -307,7 +307,7 @@ class AssistantStream(AsyncAssistantEventHandler):
                 await TagsFetcher.add_new_tag(lead_id=str(self.lead_id), tag_name=tag_name)
                 await TaskFetcher.set_task(lead_id=str(self.lead_id), task_text=TaskTexts.NEED_MANAGER_TEXT)
                 logger.info(f"В сделке {self.lead_id} не удалось ответить на вопрос")
-                await AmoLeadsCRUD.delete_lead_and_related_data(self.lead_id)
+                await AmoLeadsCRUD.delete_lead_and_related_data(int(self.lead_id))
             else:
                 await RadistonlineMessages.send_message(
                     chat_id=self.chat_id, text=text.value, new_messages_count=self.new_messages_count
@@ -350,7 +350,7 @@ class RegistrationAssistantStream(AsyncAssistantEventHandler):
                     await LeadFetcher.change_lead_status(lead_id=self.lead_id, status_name='В работе ( не было звонка)')
                     await TagsFetcher.add_new_tag(lead_id=str(self.lead_id), tag_name='не было нужного слота')
                     logger.info(f"В сделке с ID #{self.lead_id} повторное предложение уже было сделано")
-                    await AmoLeadsCRUD.delete_lead_and_related_data(self.lead_id)
+                    await AmoLeadsCRUD.delete_lead_and_related_data(int(self.lead_id))
                 else:
 
                     # В этом случае повторное предложение еще не сделано, поэтому отправляем повторное предложение
@@ -370,7 +370,7 @@ class RegistrationAssistantStream(AsyncAssistantEventHandler):
                     await LeadFetcher.change_lead_status(lead_id=self.lead_id, status_name='ВЫБРАЛИ ВРЕМЯ')
                     await TagsFetcher.add_new_tag(lead_id=str(self.lead_id), tag_name='Записал_НМ')
                     await TaskFetcher.set_task(lead_id=str(self.lead_id), task_text=TaskTexts.TIME_SELECTED_TEXT)
-                    await AmoLeadsCRUD.delete_lead_and_related_data(self.lead_id)
+                    await AmoLeadsCRUD.delete_lead_and_related_data(int(self.lead_id))
                 else:
                     logger.info(f"В сделке с ID #{self.lead_id} слот уже занят: {slot_id}")
                     status_value = await CustomFieldsFetcher.get_neuromanager_status_value(lead_id=self.lead_id)
@@ -381,7 +381,7 @@ class RegistrationAssistantStream(AsyncAssistantEventHandler):
                                                              status_name='В работе ( не было звонка)')
                         await TagsFetcher.add_new_tag(lead_id=str(self.lead_id), tag_name='не было нужного слота')
                         logger.info(f"В сделке с ID #{self.lead_id} повторное предложение уже было сделано")
-                        await AmoLeadsCRUD.delete_lead_and_related_data(self.lead_id)
+                        await AmoLeadsCRUD.delete_lead_and_related_data(int(self.lead_id))
                     else:
                         # В этом случае повторное предложение еще не сделано, поэтому отправляем повторное предложение
                         re_offer = await Assistant.re_offer_slot(chat_id=self.chat_id)
@@ -399,7 +399,7 @@ class RegistrationAssistantStream(AsyncAssistantEventHandler):
             await TagsFetcher.add_new_tag(lead_id=str(self.lead_id), tag_name=tag_name)
             await TaskFetcher.set_task(lead_id=str(self.lead_id), task_text=TaskTexts.NEED_MANAGER_TEXT)
             logger.info(f"В сделке с ID {self.lead_id} не смогли договориться насчёт времени приема")
-            await AmoLeadsCRUD.delete_lead_and_related_data(self.lead_id)
+            await AmoLeadsCRUD.delete_lead_and_related_data(int(self.lead_id))
         else:
             await RadistonlineMessages.send_message(
                 chat_id=self.chat_id, text=text.value, new_messages_count=self.new_messages_count

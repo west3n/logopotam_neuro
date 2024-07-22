@@ -203,17 +203,17 @@ class AmoLeadsCRUD:
                 )
                 await session.execute(delete_messages)
 
-                delete_chats = (
-                    delete(RadistChats)
-                    .where(RadistChats.chat_id == chat_id)
-                )
-                await session.execute(delete_chats)
-
                 delete_lead = (
                     delete(AmoLeads)
                     .where(AmoLeads.lead_id == lead_id)
                 )
                 await session.execute(delete_lead)
+
+                delete_chats = (
+                    delete(RadistChats)
+                    .where(RadistChats.chat_id == chat_id)
+                )
+                await session.execute(delete_chats)
 
                 delete_contacts = (
                     delete(AmoContacts)
