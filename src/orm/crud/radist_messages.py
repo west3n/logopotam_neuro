@@ -189,13 +189,3 @@ class RadistMessagesCRUD:
                     .where(RadistMessages.send_time < older_than)  # noqa
                 )
                 await session.execute(query)
-
-
-if __name__ == '__main__':
-    import asyncio
-    from timeit import default_timer as timer
-    start = timer()
-    chats = asyncio.run(RadistMessagesCRUD.get_15_minutes_delay_chats())
-    end = timer()
-    print(len(chats))
-    print(end - start)
