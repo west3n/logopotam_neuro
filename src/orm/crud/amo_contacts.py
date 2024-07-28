@@ -11,24 +11,20 @@ class AmoContactsCRUD:
 
     @staticmethod
     async def get_renamed_contact(contact_id: int):
-        async_session = await get_session()
-        async with async_session() as session:
-            async with session.begin():
-                result = await session.execute(
-                    select(AmoContacts).where(
-                        AmoContacts.contact_id == contact_id).filter(AmoContacts.is_renamed == False)  # noqa
-                )  # noqa
-                contact: AmoContacts = result.fetchone()
-                return contact[0].name if contact else None
+        async with get_session() as session:  # noqa
+            result = await session.execute(
+                select(AmoContacts).where(
+                    AmoContacts.contact_id == contact_id).filter(AmoContacts.is_renamed == False)  # noqa
+            )  # noqa
+            contact: AmoContacts = await result.fetchone()
+            return contact[0].name if contact else None
 
     @staticmethod
     async def changed_renamed_status(contact_id: int):
-        async_session = await get_session()
-        async with async_session() as session:
-            async with session.begin():
-                await session.execute(
-                    update(AmoContacts).where(AmoContacts.contact_id == contact_id).values(  # noqa
-                        is_renamed=True
-                    )
+        async with get_session() as session:  # noqa
+            await session.execute(
+                update(AmoContacts).where(AmoContacts.contact_id == contact_id).values(  # noqa
+                    is_renamed=True
                 )
-                await session.commit()
+            )
+            await session.commit()

@@ -11,6 +11,7 @@ from src.dialog.distributors.amo_distributor import amo_data_processing
 from src.dialog.distributors.radist_distributor import radist_data_processing
 
 from src.core.scheduler import send_10_min_delay_messages, change_status_15_min_delay_messages
+from src.orm.session import create_metadata
 from src.orm.crud.slots import SlotsCRUD
 from src.orm.crud.radist_messages import RadistMessagesCRUD
 
@@ -72,11 +73,18 @@ async def show_logs():
 @app.before_serving
 async def start_scheduler():
     """
-    Запуск ежеминутных задач
-    1. Обновление слотов
-    2. Отправка сообщений при 10-минутном молчании
-    3. Смена статусов сделок при 15-минутном молчании
+    Запуск ежеминутных задач + запуск создания базы данных
+
+    1. Удаление старых сообщений
+    2. Обновление слотов
+    3. Отправка сообщений при 10-минутном молчании
+    4. Смена статусов сделок при 15-минутном молчании
     """
+
+    # Создание базы данных
+    await create_metadata()
+
+    # Запуск ежеминутных задач
     scheduler = AsyncIOScheduler()
     scheduler.add_job(RadistMessagesCRUD.delete_old_messages, 'cron', hour=22)
     scheduler.add_job(SlotsCRUD.update_slots, 'interval', seconds=60)

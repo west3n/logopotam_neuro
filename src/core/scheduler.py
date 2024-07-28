@@ -1,4 +1,3 @@
-import time
 import asyncio
 
 from src.api.amoCRM.leads import LeadFetcher

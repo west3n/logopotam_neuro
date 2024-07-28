@@ -18,15 +18,13 @@ class AmoPipelinesCRUD:
         """
         all_pipelines = await PipelineFetcher.get_pipelines()
         for pipeline_data in all_pipelines:
-            async_session = await get_session()
-            async with async_session() as session:
-                async with session.begin():
-                    pipeline_insert_stmt = insert(AmoPipelines).values(
-                        pipeline_id=pipeline_data['id'],
-                        name=pipeline_data['name']
-                    )
-                    pipeline_do_nothing_stmt = pipeline_insert_stmt.on_conflict_do_nothing(
-                        index_elements=['pipeline_id']
-                    )
-                    await session.execute(pipeline_do_nothing_stmt)
+            async with get_session() as session: # noqa
+                pipeline_insert_stmt = insert(AmoPipelines).values(
+                    pipeline_id=pipeline_data['id'],
+                    name=pipeline_data['name']
+                )
+                pipeline_do_nothing_stmt = pipeline_insert_stmt.on_conflict_do_nothing(
+                    index_elements=['pipeline_id']
+                )
+                await session.execute(pipeline_do_nothing_stmt)
                 await session.commit()
