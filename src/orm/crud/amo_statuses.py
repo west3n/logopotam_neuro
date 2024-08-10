@@ -39,8 +39,7 @@ class AmoStatusesCRUD:
         :param status_name: Name of the status
         :return: Status ID
         """
-        async_session = await get_session()
-        async with async_session() as session:
+        async with get_session() as session:  # noqa
             result = await session.execute(
                 select(AmoStatuses.status_id)
                 .where(AmoStatuses.name == status_name))  # noqa

@@ -3,6 +3,7 @@ from typing import Union, List
 from sqlalchemy import select, update, delete
 from sqlalchemy.dialects.postgresql import insert
 
+from src.core.config import logger
 from src.orm.models.radist_messages import RadistMessages
 from src.orm.session import get_session
 
@@ -201,3 +202,4 @@ class AmoLeadsCRUD:
             )
             await session.execute(delete_contacts)
             await session.commit()
+            logger.info(f"Сделка с ID {lead_id} удалена из БД")

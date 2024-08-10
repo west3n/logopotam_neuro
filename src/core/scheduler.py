@@ -24,7 +24,7 @@ async def send_10_min_delay_messages():
     chats = await RadistMessagesCRUD.get_10_minutes_delay_chats()
     neuro_status_id = await AmoStatusesCRUD.get_neuro_status_id("СТАРТ НЕЙРО")
 
-    semaphore = asyncio.Semaphore(3)
+    semaphore = asyncio.Semaphore(2)
 
     async def process_chat(lead_id, chat_id, step):
         async with semaphore:
@@ -53,7 +53,7 @@ async def change_status_15_min_delay_messages():
     chats = await RadistMessagesCRUD.get_15_minutes_delay_chats()
     neuro_status_id = await AmoStatusesCRUD.get_neuro_status_id("СТАРТ НЕЙРО")
 
-    semaphore = asyncio.Semaphore(3)
+    semaphore = asyncio.Semaphore(2)
 
     async def process_chat(lead_id, chat_id, step):
         async with semaphore:

@@ -87,7 +87,7 @@ async def start_scheduler():
     # Запуск ежеминутных задач
     scheduler = AsyncIOScheduler()
     scheduler.add_job(RadistMessagesCRUD.delete_old_messages, 'cron', hour=22)
-    scheduler.add_job(SlotsCRUD.update_slots, 'interval', seconds=60)
+    scheduler.add_job(SlotsCRUD.update_slots, 'interval', seconds=30)
     scheduler.add_job(send_10_min_delay_messages, 'interval', seconds=70, max_instances=1)
     scheduler.add_job(change_status_15_min_delay_messages, 'interval', seconds=60, max_instances=1)
     scheduler.start()

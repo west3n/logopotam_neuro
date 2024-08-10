@@ -3,32 +3,37 @@ from datetime import datetime, timedelta
 from sqlalchemy import select, update, insert, delete
 
 from src.api.bubulearn.slots import BubulearnSlotsFetcher
+from src.core.config import logger
 from src.orm.models.slots import Slots
 from src.orm.session import get_session
 
 
 class SlotsCRUD:
     @staticmethod
-    async def read_slots() -> tuple:
+    async def read_slots(lead_id: int = None):
         """
         Получение слотов
         :return: слоты
         """
-        async with get_session() as session: # noqa
+        async with get_session() as session:  # noqa
             slots = await session.execute(select(Slots))
             slots = slots.scalars().all()
-            return [
+            slot_list = [
                 {
                     "weekday": slot.weekday,
                     "start_time": slot.start_time.strftime("%d.%m.%Y %H:%M"),
                 } for slot in slots if not slot.is_busy
-            ], str([
+            ]
+            slot_dict_str = str([
                 {
                     "slot_id": slot.slot_id,
                     "weekday": slot.weekday,
                     "start_time": slot.start_time.strftime("%d.%m.%Y %H:%M"),
                 } for slot in slots if not slot.is_busy
             ])
+            if lead_id:
+                logger.info(f"Вывод списка слотов для сделки {lead_id}: {slot_dict_str}")
+            return slot_list, slot_dict_str
 
     @staticmethod
     async def update_slots():
@@ -36,7 +41,7 @@ class SlotsCRUD:
         Обновляет слоты в БД через информацию, полученную из API bubulearn раз в минуту
         """
         slots_data = await BubulearnSlotsFetcher.get_slots()
-        async with get_session() as session: # noqa
+        async with get_session() as session:  # noqa
 
             # Получаем все текущие слоты для сравнения с новой информацией
             existing_slots = await session.execute(select(Slots))
@@ -68,7 +73,7 @@ class SlotsCRUD:
         Бронь слота
         :param slot_id: ID слота
         """
-        async with get_session() as session: # noqa
-            await session.execute(update(Slots).where(Slots.slot_id == slot_id).values( # noqa
+        async with get_session() as session:  # noqa
+            await session.execute(update(Slots).where(Slots.slot_id == slot_id).values(  # noqa
                 is_busy=True, reserve_time=datetime.now()))
             await session.commit()

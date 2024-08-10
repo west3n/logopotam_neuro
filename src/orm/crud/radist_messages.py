@@ -29,34 +29,33 @@ class RadistMessagesCRUD:
                     send_time = datetime.strptime(send_time, '%Y-%m-%dT%H:%M:%S.%f%z')
                 except ValueError:
                     send_time = datetime.strptime(send_time, '%Y-%m-%dT%H:%M:%S.%f')
-            async with session.begin():
-                try:
+            try:
+                new_message_insert_stmt = insert(RadistMessages).values(
+                    message_id=data['event']['message']['message_id'],
+                    chat_id=data['event']['chat_id'],
+                    sender='robot' if data['event']['message']['direction'] == 'outbound' else 'user',
+                    text=data['event']['message']['text']['text'],
+                    send_time=send_time
+                ).on_conflict_do_nothing(
+                    index_elements=['message_id']
+                )
+                if delay_status:
                     new_message_insert_stmt = insert(RadistMessages).values(
                         message_id=data['event']['message']['message_id'],
                         chat_id=data['event']['chat_id'],
                         sender='robot' if data['event']['message']['direction'] == 'outbound' else 'user',
                         text=data['event']['message']['text']['text'],
-                        send_time=send_time
+                        send_time=send_time,
+                        delay_status=delay_status
                     ).on_conflict_do_nothing(
                         index_elements=['message_id']
                     )
-                    if delay_status:
-                        new_message_insert_stmt = insert(RadistMessages).values(
-                            message_id=data['event']['message']['message_id'],
-                            chat_id=data['event']['chat_id'],
-                            sender='robot' if data['event']['message']['direction'] == 'outbound' else 'user',
-                            text=data['event']['message']['text']['text'],
-                            send_time=send_time,
-                            delay_status=delay_status
-                        ).on_conflict_do_nothing(
-                            index_elements=['message_id']
-                        )
-                    await session.execute(new_message_insert_stmt)
-                    await session.commit()
+                await session.execute(new_message_insert_stmt)
+                await session.commit()
 
-                # Это исключение срабатывает только при попытке сохранить сообщение с картинкой
-                except KeyError:
-                    pass
+            # Это исключение срабатывает только при попытке сохранить сообщение с картинкой
+            except KeyError:
+                pass
 
     @staticmethod
     async def get_all_unanswered_messages(chat_id: int):
@@ -178,3 +177,4 @@ class RadistMessagesCRUD:
                 .where(RadistMessages.send_time < older_than)  # noqa
             )
             await session.execute(query)
+            await session.commit()

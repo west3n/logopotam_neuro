@@ -16,7 +16,7 @@ class AmoContactsCRUD:
                 select(AmoContacts).where(
                     AmoContacts.contact_id == contact_id).filter(AmoContacts.is_renamed == False)  # noqa
             )  # noqa
-            contact: AmoContacts = await result.fetchone()
+            contact: AmoContacts = result.fetchone()
             return contact[0].name if contact else None
 
     @staticmethod

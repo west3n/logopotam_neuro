@@ -336,6 +336,7 @@ class RegistrationAssistantStream(AsyncAssistantEventHandler):
             # Здесь логика после успешного выбора времени
             logger.info(f"В сделке с ID {self.lead_id} клиент выбрал время: {text.value}")
             slot_id = await GetSlotId.get_slot_id(text.value)
+            await SlotsCRUD.read_slots(lead_id=self.lead_id)
             logger.info(f"В сделке с ID {self.lead_id} получен ID слота: {slot_id}")
             time = await BubulearnSlotsFetcher.get_slots(slot_id=slot_id)
             logger.info(f"В сделке с ID {self.lead_id} получен слот: {time}")
